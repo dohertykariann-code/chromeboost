@@ -1,0 +1,26 @@
+{
+  "name": "chromeboost",
+  "description": "ChromeBoost — drive your real Chrome from Claude Code with occlusion-aware cursor control and a movable HUD.",
+  "owner": {
+    "name": "lordamdal",
+    "url": "https://github.com/lordamdal"
+  },
+  "plugins": [
+    {
+      "name": "chromeboost",
+      "displayName": "ChromeBoost",
+      "source": "./packages/plugin",
+      "description": "Drive your real Chrome from Claude Code — hit-tests before clicking so scrims, backdrops and sticky bars can't swallow the click, plus hover, drag, and a HUD you can move or hide.",
+      "version": "1.0.0",
+      "author": {
+        "name": "lordamdal",
+        "url": "https://github.com/lordamdal"
+      },
+      "homepage": "https://chromeboost.vercel.app",
+      "repository": "https://github.com/lordamdal/chromeboost",
+      "license": "MIT",
+      "category": "productivity",
+      "tags": ["mcp", "browser", "chrome", "automation", "claude-code", "cursor", "overlay"]
+    }
+  ]
+}

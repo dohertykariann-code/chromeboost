@@ -1,0 +1,59 @@
+{
+  "name": "chromeboost",
+  "version": "1.0.0",
+  "description": "MCP server for chromeboost — lets Claude Code or Codex CLI drive your real Chrome browser with sessions intact. Plugin install recommended; npx chromeboost for manual MCP wiring.",
+  "type": "module",
+  "main": "./bin/chromeboost.mjs",
+  "bin": {
+    "chromeboost": "./bin/chromeboost.mjs"
+  },
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "../plugin/scripts/build-server.sh && mkdir -p bin && cp ../plugin/server/chromeboost.mjs bin/chromeboost.mjs",
+    "dev": "tsc --watch"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude-code",
+    "codex-cli",
+    "browser-automation",
+    "chrome-extension",
+    "ai-agent",
+    "agent-tooling",
+    "playwright-alternative",
+    "browser-use-alternative",
+    "puppeteer-alternative",
+    "web-automation",
+    "stripe",
+    "canvas",
+    "real-chrome-session"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lordamdal/chromeboost.git",
+    "directory": "packages/mcp-server"
+  },
+  "homepage": "https://chromeboost.vercel.app",
+  "bugs": "https://github.com/lordamdal/chromeboost/issues",
+  "license": "MIT",
+  "author": "ChromeBoost contributors",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "ws": "^8.18.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.5.0"
+  }
+}

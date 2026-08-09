@@ -1,0 +1,17 @@
+{
+  "name": "chromeboost",
+  "version": "1.0.0",
+  "description": "Drive your real Chrome from Claude Code — movable/hideable HUD plus occlusion-aware cursor control that clicks through JS overlays, scrims and sticky bars. Bundles the ChromeBoost MCP server, permission allowlist, and usage skill.",
+  "homepage": "https://chromeboost.vercel.app",
+  "repository": "https://github.com/lordamdal/chromeboost",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "browser",
+    "chrome",
+    "automation",
+    "stripe",
+    "supabase",
+    "claude-code"
+  ]
+}

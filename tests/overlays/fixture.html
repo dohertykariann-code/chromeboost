@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ChromeBoost — occlusion test fixture</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 40px; background: #f7f7f8; }
+  h1 { font-size: 18px; }
+  .row { margin: 28px 0; }
+  button.target {
+    padding: 12px 22px; font-size: 15px; border-radius: 8px;
+    border: 1px solid #d1d5db; background: #fff; cursor: pointer;
+  }
+  #log { margin-top: 24px; font-family: ui-monospace, monospace; font-size: 12px;
+         background: #111; color: #0f0; padding: 12px; border-radius: 8px; min-height: 60px; }
+
+  /* 1. Full-viewport transparent click-catcher — the classic invisible blocker. */
+  #catcher { position: fixed; inset: 0; background: transparent; z-index: 900; }
+
+  /* 2. Semi-opaque modal backdrop. */
+  #scrim { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 950; display: none; }
+
+  /* 3. Sticky bottom bar that half-covers a button. */
+  #stickybar { position: fixed; left: 0; right: 0; bottom: 0; height: 90px;
+               background: #1f2937; color: #fff; z-index: 800;
+               display: flex; align-items: center; padding: 0 20px; }
+</style>
+</head>
+<body>
+<h1>ChromeBoost occlusion test fixture</h1>
+
+<div class="row">
+  <button class="target" id="btn-clear" onclick="log('btn-clear CLICKED')">Clear button (nothing on top)</button>
+</div>
+
+<div class="row">
+  <button class="target" id="btn-catcher" onclick="log('btn-catcher CLICKED')">Under transparent catcher</button>
+</div>
+
+<div class="row">
+  <button class="target" id="btn-shadow-host">(shadow host below)</button>
+</div>
+<div id="host"></div>
+
+<div style="height: 60vh"></div>
+<div class="row">
+  <button class="target" id="btn-sticky" onclick="log('btn-sticky CLICKED')">Behind sticky bar</button>
+</div>
+
+<div id="catcher"></div>
+<div id="scrim"></div>
+<div id="stickybar">Sticky action bar</div>
+
+<div id="log">ready</div>
+
+<script>
+  function log(m){ const el=document.getElementById('log'); el.textContent += "\n" + m; }
+  // Shadow-rooted button, to prove hit-testing descends into shadow trees.
+  const sr = document.getElementById('host').attachShadow({mode:'open'});
+  sr.innerHTML = `<style>button{padding:12px 22px;font-size:15px;border-radius:8px;border:1px solid #d1d5db;background:#fff;cursor:pointer}</style>
+                  <button id="inner">Inside open shadow root</button>`;
+  sr.getElementById('inner').addEventListener('click', () => log('shadow inner CLICKED'));
+  document.getElementById('catcher').addEventListener('click', () => log('CATCHER swallowed the click'));
+</script>
+</body>
+</html>

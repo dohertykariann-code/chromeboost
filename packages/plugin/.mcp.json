@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "chromeboost": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/chromeboost.mjs"]
+    }
+  }
+}

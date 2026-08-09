@@ -1,0 +1,16 @@
+{
+  "name": "chromeboost",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "overrides": {
+    "express-rate-limit": "^8.2.2"
+  },
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "dev:mcp": "npm run dev -w packages/mcp-server",
+    "dev:ext": "npm run dev -w packages/extension",
+    "dev:web": "node app/website/server.mjs"
+  }
+}

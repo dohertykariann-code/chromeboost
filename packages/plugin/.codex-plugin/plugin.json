@@ -1,0 +1,20 @@
+{
+  "name": "chromeboost",
+  "version": "1.0.0",
+  "description": "Let Codex drive your real browser — clicks, fills forms, grabs API keys, writes them to .env. Bundles the chromeboost MCP server and usage skill.",
+  "homepage": "https://chromeboost.vercel.app",
+  "repository": "https://github.com/lordamdal/chromeboost",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "browser",
+    "chrome",
+    "automation",
+    "stripe",
+    "supabase",
+    "codex"
+  ],
+  "skills": "./skills-codex/",
+  "mcpServers": "./.mcp.codex.json",
+  "hooks": "./hooks-codex/hooks.json"
+}

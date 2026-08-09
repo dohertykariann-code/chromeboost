@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__chromeboost__capture_terminal",
+      "mcp__chromeboost__clear_overlays",
+      "mcp__chromeboost__click_at_coordinates",
+      "mcp__chromeboost__click_element",
+      "mcp__chromeboost__close_other_tabs",
+      "mcp__chromeboost__close_tab",
+      "mcp__chromeboost__download_file",
+      "mcp__chromeboost__drag",
+      "mcp__chromeboost__execute_script",
+      "mcp__chromeboost__fetch_url",
+      "mcp__chromeboost__fill_form",
+      "mcp__chromeboost__fill_input",
+      "mcp__chromeboost__find_text",
+      "mcp__chromeboost__get_console_logs",
+      "mcp__chromeboost__get_form_fields",
+      "mcp__chromeboost__get_page_html",
+      "mcp__chromeboost__get_page_text",
+      "mcp__chromeboost__highlight_region",
+      "mcp__chromeboost__hover",
+      "mcp__chromeboost__hud",
+      "mcp__chromeboost__inspect_request_headers",
+      "mcp__chromeboost__list_frames",
+      "mcp__chromeboost__list_tabs",
+      "mcp__chromeboost__open_page",
+      "mcp__chromeboost__probe_point",
+      "mcp__chromeboost__read_attachment",
+      "mcp__chromeboost__save_flow",
+      "mcp__chromeboost__scroll_to_element",
+      "mcp__chromeboost__set_file_input",
+      "mcp__chromeboost__switch_to_tab",
+      "mcp__chromeboost__take_screenshot",
+      "mcp__chromeboost__type_text",
+      "mcp__chromeboost__wait_for",
+      "mcp__chromeboost__wait_for_click",
+      "mcp__chromeboost__write_to_env"
+    ]
+  }
+}
