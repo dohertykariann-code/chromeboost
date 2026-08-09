@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Email security reports to **AndrewMaxwellRobertson@gmail.com** with the subject `chromeboost security`. Please include:
+Email security reports to **me@lordamdal.com** with the subject `chromeboost security`. Please include:
 
 - A description of the vulnerability and its impact
 - Reproduction steps (URL, tool call sequence, or extension interaction)

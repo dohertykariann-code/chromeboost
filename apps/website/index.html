@@ -458,6 +458,54 @@
   .btn-coffee { background: var(--ink); color: var(--naples); }
   .btn-coffee:hover { background: var(--coral); color: #fff; }
 
+
+  /* ── Copyable command rows ────────────────────────────────
+     Split one-per-row with its own button. A single <pre> holding two
+     commands invites selecting both and pasting them into one prompt —
+     which is exactly how `/plugin marketplace add` gets handed a repo name
+     with a second command glued onto it. */
+  .cmds { margin-top: 14px; display: flex; flex-direction: column; gap: 9px; }
+  .cmd {
+    display: flex; align-items: stretch;
+    border: 3px solid var(--ink); background: var(--ink);
+    box-shadow: var(--hard-sm);
+  }
+  .cmd-text {
+    flex: 1 1 auto; min-width: 0;
+    padding: 12px 14px;
+    font-family: var(--mono); font-size: 13px; line-height: 1.5;
+    color: #f0ead8; overflow-x: auto; white-space: pre;
+  }
+  .cmd-text .k { color: var(--naples); font-weight: 700; }
+  .cmd-text .c { color: #8f8676; }
+  .cmd-text .s { color: var(--teal); }
+  .cmd-copy {
+    flex: none; min-width: 92px;
+    border: none; border-left: 3px solid var(--paper-3);
+    background: var(--naples); color: var(--ink);
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .09em;
+    cursor: pointer; padding: 0 12px;
+  }
+  .cmd-copy:hover { background: var(--coral); color: #fff; }
+  .cmd-copy:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
+  .cmd-copy.done { background: var(--viridian); color: #fff; }
+  .cmd-copy.fail { background: var(--rose); color: #fff; }
+
+  .cmd-hint {
+    margin-top: 11px; padding: 9px 12px;
+    border: 2px dashed var(--ink); background: rgba(239,182,61,.28);
+    font-size: 13.5px; line-height: 1.5;
+  }
+  .cmd-hint b { font-weight: 700; }
+
+  /* Multi-line block that copies as a whole (config snippets) */
+  .block { position: relative; }
+  .block .cmd-copy {
+    position: absolute; top: 10px; right: 10px;
+    border: 2px solid var(--paper-3); min-width: 78px; padding: 5px 10px;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
     html { scroll-behavior: auto; }
@@ -1052,9 +1100,37 @@
         <div class="step-body glass">
           <h3>Add the plugin</h3>
           <p>In Claude Code, add the marketplace and install. This pulls down the MCP server <em>and</em> the extension files.</p>
-<pre><span class="k">/plugin</span> marketplace add lordamdal/chromeboost
-<span class="k">/plugin</span> install chromeboost@chromeboost</pre>
-          <p style="margin-top:13px">Restart Claude Code so the server starts.</p>
+<div class="cmds">
+            <div class="cmd">
+              <span class="cmd-text"><span class="k">/plugin</span> marketplace add lordamdal/chromeboost</span>
+              <button class="cmd-copy" type="button" data-copy="/plugin marketplace add lordamdal/chromeboost">Copy</button>
+            </div>
+            <div class="cmd">
+              <span class="cmd-text"><span class="k">/plugin</span> install chromeboost@chromeboost</span>
+              <button class="cmd-copy" type="button" data-copy="/plugin install chromeboost@chromeboost">Copy</button>
+            </div>
+          </div>
+          <p class="cmd-hint">
+            <b>Run these one at a time</b> — never paste both into the same box. If the first opens
+            a dialog asking for a <i>marketplace source</i>, it wants the repo on its own:
+          </p>
+          <div class="cmds">
+            <div class="cmd">
+              <span class="cmd-text">lordamdal/chromeboost</span>
+              <button class="cmd-copy" type="button" data-copy="lordamdal/chromeboost">Copy</button>
+            </div>
+          </div>
+          <p class="cmd-hint">
+            Shorthand like that clones over SSH. If you get a permission or host-key error, use the
+            HTTPS URL instead:
+          </p>
+          <div class="cmds">
+            <div class="cmd">
+              <span class="cmd-text"><span class="s">https://github.com/lordamdal/chromeboost.git</span></span>
+              <button class="cmd-copy" type="button" data-copy="https://github.com/lordamdal/chromeboost.git">Copy</button>
+            </div>
+          </div>
+          <p style="margin-top:13px">Then restart Claude Code so the MCP server starts.</p>
         </div>
       </div>
 
@@ -1066,7 +1142,20 @@
             This finds the bundled extension on your disk, prints the exact folder, and offers to
             reveal it in Finder so you can drag it straight into Chrome.
           </p>
-<pre><span class="k">/chromeboost-setup</span></pre>
+<div class="cmds">
+            <div class="cmd">
+              <span class="cmd-text"><span class="k">/chromeboost-setup</span></span>
+              <button class="cmd-copy" type="button" data-copy="/chromeboost-setup">Copy</button>
+            </div>
+            <div class="cmd">
+              <span class="cmd-text"><span class="s">chrome://extensions</span></span>
+              <button class="cmd-copy" type="button" data-copy="chrome://extensions">Copy</button>
+            </div>
+          </div>
+          <p class="cmd-hint">
+            <b>chrome://</b> addresses can't be opened from a link — paste that one into Chrome's
+            address bar yourself.
+          </p>
           <p style="margin-top:13px">
             Then in Chrome: open <code class="i">chrome://extensions</code>, turn on
             <strong>Developer mode</strong>, click <strong>Load unpacked</strong>, and pick that
@@ -1084,7 +1173,12 @@
             Click the ChromeBoost icon in the toolbar. Your session shows up with a green dot — hit
             <strong>Use this window</strong> to bind the Chrome window you want driven. That's it:
           </p>
-<pre><span class="c">"open news.ycombinator.com and give me the top 5 stories"</span></pre>
+<div class="cmds">
+            <div class="cmd">
+              <span class="cmd-text"><span class="c">open news.ycombinator.com and give me the top 5 stories</span></span>
+              <button class="cmd-copy" type="button" data-copy="open news.ycombinator.com and give me the top 5 stories">Copy</button>
+            </div>
+          </div>
           <p style="margin-top:13px">
             <code class="i">/chromeboost-setup</code> verifies the connection for you at the end,
             so you'll know it's working before you rely on it.
@@ -1222,6 +1316,79 @@
   console.log("%cClaude with hands in your own browser. Free, MIT, no telemetry.", line);
   console.log("%c☕ If it saved you an afternoon:  https://buy.stripe.com/6oU6oHbqTcD8gSQ1rQbAs00", link);
   console.log("%c★ Source:  https://github.com/lordamdal/chromeboost", link);
+})();
+
+
+// ─── Copy-to-clipboard for command rows ────────────────────────────────────
+// Delegated, so it covers every .cmd-copy without per-button wiring. Falls
+// back to execCommand for non-secure contexts (file://, plain http), where
+// navigator.clipboard is undefined.
+(function () {
+  function legacyCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  function flash(btn, label, cls) {
+    var original = btn.dataset.label || btn.textContent;
+    btn.dataset.label = original;
+    btn.textContent = label;
+    btn.classList.remove('done', 'fail');
+    if (cls) btn.classList.add(cls);
+    clearTimeout(btn._t);
+    btn._t = setTimeout(function () {
+      btn.textContent = original;
+      btn.classList.remove('done', 'fail');
+    }, 1600);
+  }
+
+  // Last resort: if both copy paths are refused (no user activation, locked-down
+  // clipboard permission), select the command so ⌘C / Ctrl+C actually works —
+  // otherwise "Press ⌘C" is advice the user can't act on.
+  function selectCommand(btn) {
+    var textEl = btn.parentElement && btn.parentElement.querySelector('.cmd-text');
+    if (!textEl) return;
+    try {
+      var range = document.createRange();
+      range.selectNodeContents(textEl);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (_) { /* selection unavailable */ }
+  }
+
+  function fallback(btn, text) {
+    if (legacyCopy(text)) {
+      flash(btn, 'Copied ✓', 'done');
+    } else {
+      selectCommand(btn);
+      flash(btn, 'Press ⌘C', 'fail');
+    }
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.cmd-copy');
+    if (!btn) return;
+    var text = btn.getAttribute('data-copy');
+    if (!text) return;
+
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(
+        function () { flash(btn, 'Copied ✓', 'done'); },
+        function () { fallback(btn, text); }
+      );
+    } else {
+      fallback(btn, text);
+    }
+  });
 })();
 
 // ─── HUD playground ────────────────────────────────────────────────────────

@@ -20,8 +20,13 @@ with occlusion-aware cursor control and a HUD you can move.
 
 Once the repo is public on GitHub:
 
+Run these one at a time, not as a single paste:
+
 ```
 /plugin marketplace add lordamdal/chromeboost
+```
+
+```
 /plugin install chromeboost@chromeboost
 ```
 

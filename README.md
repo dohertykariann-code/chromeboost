@@ -77,8 +77,25 @@ ships both halves.
 
 ### 1. Add the plugin
 
+Run these **one at a time** — not as a single paste.
+
 ```
 /plugin marketplace add lordamdal/chromeboost
+```
+
+If that opens a dialog asking for a *marketplace source*, give it the repo on its own:
+
+```
+lordamdal/chromeboost
+```
+
+> Shorthand clones over SSH. On a permission or host-key error, use
+> `https://github.com/lordamdal/chromeboost.git` instead, or set
+> `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1`.
+
+Then, as a separate command:
+
+```
 /plugin install chromeboost@chromeboost
 ```
 
