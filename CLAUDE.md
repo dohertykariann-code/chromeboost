@@ -217,8 +217,8 @@ Do NOT add new content to this file. Repo-developer concerns only.
 ## Distribution
 
 ChromeBoost is distributed as a Claude Code plugin marketplace from
-`github.com/lordamdal/chromeboost`. There is no npm package and no
-Chrome Web Store listing.
+`github.com/lordamdal/chromeboost`. There is no npm package and no Chrome
+Web Store listing.
 
 The plugin carries **both halves**: the bundled MCP server at
 `packages/plugin/server/chromeboost.mjs` and the built extension at
@@ -229,6 +229,24 @@ The plugin carries **both halves**: the bundled MCP server at
 run `npm run build` and commit the synced payload alongside it, or users
 get a stale extension.
 
-Users finish setup with `/chromeboost-setup`, which resolves
-`${CLAUDE_PLUGIN_ROOT}/extension`, hands them the folder, and verifies
-the WebSocket connection with `list_tabs` before declaring success.
+### The install path a user actually walks
+
+`/chromeboost-setup` (`packages/plugin/commands/`) runs
+`packages/plugin/scripts/install-extension.mjs`, which copies
+`${CLAUDE_PLUGIN_ROOT}/extension` to `~/Downloads/ChromeBoost-Extension`
+and prints `CHROMEBOOST_EXTENSION_PATH=<path>` as its last line.
+
+The copy is deliberate, not incidental. Chrome loads unpacked extensions
+*by path* and re-reads that path on every launch, so it has to live
+somewhere stable and reachable — the plugin cache is neither: it's buried
+several levels under `~/.claude/plugins/cache/`, hidden from the macOS file
+picker by default, and its path changes on every plugin update. The script
+writes a `DO-NOT-DELETE.txt` into the folder for the same reason.
+
+Re-running overwrites in place, which makes it the upgrade path too: after
+`/plugin update chromeboost`, re-run the command and hit reload on the
+extension card — no re-picking the folder.
+
+The command finishes by calling `list_tabs`. Do not remove that check; an
+extension that loaded but never connected looks identical to a working one
+from the Chrome side.

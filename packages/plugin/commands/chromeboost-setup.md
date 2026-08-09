@@ -1,59 +1,66 @@
 ---
-description: Finish ChromeBoost setup — locate the bundled Chrome extension and walk through loading it.
-allowed-tools: Bash(ls:*), Bash(echo:*), Bash(cat:*), Bash(open:*), Bash(pwd:*)
+description: Finish ChromeBoost setup — copy the Chrome extension somewhere easy to find and walk through loading it.
+allowed-tools: Bash(node:*), Bash(open:*), Bash(explorer:*), Bash(xdg-open:*), Bash(ls:*)
 ---
 
 # Finish ChromeBoost setup
 
 The MCP server half of ChromeBoost is already installed (that's this plugin).
-What's left is loading the Chrome extension — the half that actually touches
-the browser. **The extension ships inside this plugin**, so there is nothing to
-clone, install, or build.
+What's left is loading the Chrome extension — the half that touches the browser.
+**The extension ships inside this plugin**, so there is nothing to clone or build.
 
-Do this now, without asking the user whether to proceed:
+Work through this now, without asking the user whether to proceed.
 
-## 1. Locate the bundled extension
+## 1. Copy the extension somewhere reachable
 
 Run:
 
 ```bash
-ls "${CLAUDE_PLUGIN_ROOT}/extension"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/install-extension.mjs"
 ```
 
-You should see `manifest.json`, `background.js`, `content.js`, `popup.html`,
-and an `icons/` folder. If that path doesn't exist, the plugin was installed
-without its extension payload — tell the user to run `/plugin update chromeboost`,
-and if that fails, point them at https://github.com/lordamdal/chromeboost#install
-for the clone-and-build fallback.
+This copies the extension to **`~/Downloads/ChromeBoost-Extension`** and prints
+the full path. It goes to Downloads on purpose: the plugin's own directory is
+buried under `~/.claude/plugins/cache/...`, which is painful to reach in
+Chrome's folder picker and changes on every plugin update. Downloads is one
+click in any file picker's sidebar.
 
-## 2. Give the user the exact path
+The script's last line is `CHROMEBOOST_EXTENSION_PATH=<path>` — use that value
+verbatim below rather than reconstructing the path yourself.
 
-Print the **absolute** path to `${CLAUDE_PLUGIN_ROOT}/extension` on its own
-line, in a code block, so they can copy it. Resolve the variable to a real
-path — do not print the literal `${CLAUDE_PLUGIN_ROOT}`.
+If it fails because no extension was found, the plugin installed without its
+payload: tell the user to run `/plugin update chromeboost`, and if that doesn't
+help, point them at
+https://github.com/lordamdal/chromeboost#install to build from source.
 
-On macOS, offer to reveal it in Finder so they can drag it straight into
-Chrome (this is the fastest path — Chrome accepts a dropped folder on the
-extensions page):
+## 2. Open the folder for them
 
-```bash
-open -R "${CLAUDE_PLUGIN_ROOT}/extension"
-```
+Reveal it in the file manager so they can drag it straight onto Chrome's
+extensions page — that's faster than navigating the picker:
+
+- macOS: `open -R "<path>"`
+- Windows: `explorer "<path>"`
+- Linux: `xdg-open "<path>"`
+
+Pick the one matching the user's platform. If the command isn't available, skip
+it — it's a convenience, not a requirement.
 
 ## 3. Walk them through loading it
 
-Give these steps verbatim:
+Give these steps, with the real path substituted in:
 
-1. Open `chrome://extensions` (paste it in the address bar — links to
-   `chrome://` URLs can't be clicked from a page).
-2. Turn on **Developer mode** — the toggle is at the top right.
-3. Click **Load unpacked**, then select the folder from step 2.
-   (Or just drag the folder from Finder onto the page.)
-4. Pin ChromeBoost to the toolbar so the popup is one click away.
+1. Open `chrome://extensions` — paste it into the address bar; `chrome://`
+   links can't be clicked from a page.
+2. Turn on **Developer mode** (toggle, top right).
+3. Click **Load unpacked**.
+4. Select the `ChromeBoost-Extension` folder (or drag it onto the page).
+5. Pin ChromeBoost to the toolbar so the popup is one click away.
 
-Explain that Chrome will show "Loaded unpacked extension" and may warn about
-developer-mode extensions — that's expected and harmless; ChromeBoost isn't on
-the Chrome Web Store, it runs from local files the user can read.
+Mention once, briefly, that Chrome flags developer-mode extensions — that's
+expected here, since ChromeBoost isn't on the Web Store and runs from local
+files. Also tell them **not to delete the folder**: Chrome reads it on every
+launch, and removing it breaks the extension. (There's a `DO-NOT-DELETE.txt`
+inside saying the same.)
 
 ## 4. Connect a window
 
@@ -63,8 +70,8 @@ window** next to it to bind the Chrome window they want driven.
 
 ## 5. Verify it actually works
 
-Once they say it's loaded, confirm the link yourself rather than taking it on
-trust — call `list_tabs`. If it returns their open tabs, setup is done; say so
+Once they say it's loaded, confirm the link yourself instead of taking it on
+trust — call `list_tabs`. If it returns their open tabs, setup is done: say so
 plainly and suggest a first prompt, e.g. *"open news.ycombinator.com and give
 me the top 5 stories"*.
 
@@ -75,6 +82,13 @@ immediately. Then try `list_tabs` again.
 
 ## Tone
 
-Keep it short and sequential. This is a 60-second task; don't pad it with
-explanation the user didn't ask for. Do not skip step 5 — an install that
-looks finished but isn't connected is the single most common failure here.
+Short and sequential — this is a 60-second task, so don't pad it. Do not skip
+step 5: an install that looks finished but isn't connected is the most common
+failure here, and the user has no way to tell from the Chrome side.
+
+## Updating later
+
+After `/plugin update chromeboost`, re-run this command. The script overwrites
+`~/Downloads/ChromeBoost-Extension` in place, so the user only needs to hit
+reload on the ChromeBoost card in `chrome://extensions` — no re-picking the
+folder.

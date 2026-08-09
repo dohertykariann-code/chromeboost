@@ -77,55 +77,91 @@ ships both halves.
 
 ### 1. Add the plugin
 
-Run these **one at a time** — not as a single paste.
+In Claude Code, run these **one at a time** — not as a single paste:
 
 ```
 /plugin marketplace add lordamdal/chromeboost
 ```
 
-If that opens a dialog asking for a *marketplace source*, give it the repo on its own:
-
-```
-lordamdal/chromeboost
-```
-
-> Shorthand clones over SSH. On a permission or host-key error, use
-> `https://github.com/lordamdal/chromeboost.git` instead, or set
-> `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1`.
-
-Then, as a separate command:
-
 ```
 /plugin install chromeboost@chromeboost
 ```
 
-Restart Claude Code so the MCP server starts.
+Then restart Claude Code so the MCP server starts.
 
-### 2. Run the setup command
+### 2. Load the extension
 
 ```
 /chromeboost-setup
 ```
 
-It locates the bundled extension on your disk, prints the exact folder, and offers to reveal it
-in Finder. Then in Chrome: open `chrome://extensions`, turn on **Developer mode**, click **Load
-unpacked**, and pick that folder.
+This copies the extension to **`~/Downloads/ChromeBoost-Extension`** and opens the folder. It goes
+to Downloads on purpose — the plugin's own directory is buried under `~/.claude/plugins/cache/…`,
+which is painful to reach in Chrome's folder picker and changes on every plugin update.
 
-Chrome will note it's a developer-mode extension. That's expected — ChromeBoost isn't on the Web
-Store, and it runs from files you can read.
+Then in Chrome:
+
+1. Paste `chrome://extensions` into the address bar (`chrome://` links can't be clicked).
+2. Turn on **Developer mode**, top right.
+3. Click **Load unpacked** and pick `ChromeBoost-Extension` — or drag the folder onto the page.
+
+> **Leave that folder where it is.** Chrome reads it on every launch, so moving or deleting it
+> breaks the extension. Chrome will also flag it as a developer-mode extension — expected, since
+> ChromeBoost isn't on the Web Store and runs from files you can read.
 
 ### 3. Point it at a window
 
 Click the ChromeBoost icon in the toolbar. Your session appears with a green dot — hit **Use this
-window** to bind the Chrome window you want driven. `/chromeboost-setup` verifies the connection
-at the end, so you'll know it works before you rely on it.
+window** to bind the Chrome window you want driven. Then try:
 
 ```
-"open news.ycombinator.com and give me the top 5 stories"
+open news.ycombinator.com and give me the top 5 stories
 ```
+
+### If something goes wrong
 
 <details>
-<summary>Build from source instead</summary>
+<summary><b>The first command opens a dialog asking for a "marketplace source"</b></summary>
+
+It wants the repo on its own, without the `/plugin` prefix:
+
+```
+lordamdal/chromeboost
+```
+
+</details>
+
+<details>
+<summary><b>Permission denied or host-key error when adding the marketplace</b></summary>
+
+`owner/repo` shorthand clones over SSH. Use the HTTPS URL instead:
+
+```
+https://github.com/lordamdal/chromeboost.git
+```
+
+Or set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` to make shorthand clone over HTTPS.
+
+</details>
+
+<details>
+<summary><b>No green dot in the popup</b></summary>
+
+The extension is loaded but hasn't connected. Hit the reload arrow on the ChromeBoost card in
+`chrome://extensions` — it reconnects on a backoff timer, and a reload forces it immediately.
+
+</details>
+
+<details>
+<summary><b>After updating the plugin</b></summary>
+
+Run `/chromeboost-setup` again. It overwrites `~/Downloads/ChromeBoost-Extension` in place, so you
+only need to hit reload in `chrome://extensions` — no re-picking the folder.
+
+</details>
+
+<details>
+<summary><b>Build from source instead</b></summary>
 
 ```bash
 git clone https://github.com/lordamdal/chromeboost

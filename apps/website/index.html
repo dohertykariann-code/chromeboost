@@ -506,6 +506,56 @@
     border: 2px solid var(--paper-3); min-width: 78px; padding: 5px 10px;
   }
 
+
+  /* ── Install: numbered sub-steps + troubleshooting ────────
+     The happy path stays in the three numbered steps; everything conditional
+     lives in the collapsed <details> so it can't be mistaken for a step. */
+  ol.mini { margin: 15px 0 0 20px; display: flex; flex-direction: column; gap: 9px; }
+  ol.mini li { font-size: 14.5px; color: var(--ink-soft); line-height: 1.55; }
+  ol.mini li strong { color: var(--ink); }
+  ol.mini::marker, ol.mini li::marker { font-family: var(--mono); font-weight: 700; color: var(--ink); }
+  .mini-note { color: var(--ink-soft); }
+
+  .cmd-copy.inline {
+    min-width: 0; border: 2px solid var(--ink); border-left-width: 2px;
+    padding: 1px 8px; margin-left: 6px; font-size: 10px;
+    vertical-align: baseline; box-shadow: 2px 2px 0 var(--ink);
+  }
+
+  .trouble { margin-top: 34px; }
+  .trouble > summary {
+    display: block; list-style: none;
+    cursor: pointer; font-family: var(--mono); font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .1em;
+    border: 3px solid var(--ink); padding: 13px 16px; background: var(--paper-2);
+    box-shadow: var(--hard-sm);
+  }
+  .trouble > summary::-webkit-details-marker { display: none; }
+  .trouble > summary::before { content: "▸ "; }
+  .trouble[open] > summary::before { content: "▾ "; }
+  .trouble > summary:hover { background: var(--naples); }
+  .trouble-body {
+    border: 3px solid var(--ink); border-top: none;
+    box-shadow: var(--hard-sm); background: var(--paper);
+    padding: 6px 20px 22px;
+  }
+  .trouble-body h4 {
+    margin-top: 22px; font-size: 15px; font-weight: 700; letter-spacing: -.01em;
+  }
+  .trouble-body p { margin-top: 7px; font-size: 14.5px; color: var(--ink-soft); }
+
+
+  /* ── Overflow containment ─────────────────────────────────
+     Grid and flex children default to `min-width: auto`, so an unbreakable
+     line — a `white-space: pre` command — sets a floor the track can't shrink
+     below. On a 390px viewport that blew `.step-body` out to 532px, and since
+     `section` is `overflow: hidden`, the excess was clipped rather than
+     scrollable: text simply gone. `min-width: 0` lets the track shrink; the
+     scrolling then happens inside `.cmd-text`, which is where it belongs. */
+  .step-body, .cmds, .cmd, .slab, .prompt, .prompt-does,
+  .stackcard, .demo-card, .trouble-body, .table-wrap { min-width: 0; }
+  ol.mini li { overflow-wrap: anywhere; }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
     html { scroll-behavior: auto; }
@@ -1099,8 +1149,8 @@
         <div class="step-n">1</div>
         <div class="step-body glass">
           <h3>Add the plugin</h3>
-          <p>In Claude Code, add the marketplace and install. This pulls down the MCP server <em>and</em> the extension files.</p>
-<div class="cmds">
+          <p>In Claude Code, run these <strong>one at a time</strong> — not as a single paste.</p>
+          <div class="cmds">
             <div class="cmd">
               <span class="cmd-text"><span class="k">/plugin</span> marketplace add lordamdal/chromeboost</span>
               <button class="cmd-copy" type="button" data-copy="/plugin marketplace add lordamdal/chromeboost">Copy</button>
@@ -1110,26 +1160,6 @@
               <button class="cmd-copy" type="button" data-copy="/plugin install chromeboost@chromeboost">Copy</button>
             </div>
           </div>
-          <p class="cmd-hint">
-            <b>Run these one at a time</b> — never paste both into the same box. If the first opens
-            a dialog asking for a <i>marketplace source</i>, it wants the repo on its own:
-          </p>
-          <div class="cmds">
-            <div class="cmd">
-              <span class="cmd-text">lordamdal/chromeboost</span>
-              <button class="cmd-copy" type="button" data-copy="lordamdal/chromeboost">Copy</button>
-            </div>
-          </div>
-          <p class="cmd-hint">
-            Shorthand like that clones over SSH. If you get a permission or host-key error, use the
-            HTTPS URL instead:
-          </p>
-          <div class="cmds">
-            <div class="cmd">
-              <span class="cmd-text"><span class="s">https://github.com/lordamdal/chromeboost.git</span></span>
-              <button class="cmd-copy" type="button" data-copy="https://github.com/lordamdal/chromeboost.git">Copy</button>
-            </div>
-          </div>
           <p style="margin-top:13px">Then restart Claude Code so the MCP server starts.</p>
         </div>
       </div>
@@ -1137,30 +1167,31 @@
       <div class="step">
         <div class="step-n">2</div>
         <div class="step-body glass">
-          <h3>Run the setup command</h3>
+          <h3>Load the extension</h3>
           <p>
-            This finds the bundled extension on your disk, prints the exact folder, and offers to
-            reveal it in Finder so you can drag it straight into Chrome.
+            This copies the extension to <strong>your Downloads folder</strong> and opens it, so
+            it's one click away in Chrome's folder picker.
           </p>
-<div class="cmds">
+          <div class="cmds">
             <div class="cmd">
               <span class="cmd-text"><span class="k">/chromeboost-setup</span></span>
               <button class="cmd-copy" type="button" data-copy="/chromeboost-setup">Copy</button>
             </div>
-            <div class="cmd">
-              <span class="cmd-text"><span class="s">chrome://extensions</span></span>
-              <button class="cmd-copy" type="button" data-copy="chrome://extensions">Copy</button>
-            </div>
           </div>
+          <ol class="mini">
+            <li>
+              Paste <code class="i">chrome://extensions</code> into Chrome's address bar
+              <button class="cmd-copy inline" type="button" data-copy="chrome://extensions">Copy</button>
+              <span class="mini-note">— <code class="i">chrome://</code> links can't be clicked from a page.</span>
+            </li>
+            <li>Turn on <strong>Developer mode</strong>, top right.</li>
+            <li>Click <strong>Load unpacked</strong> and pick <code class="i">ChromeBoost-Extension</code> from Downloads — or just drag the folder onto the page.</li>
+          </ol>
           <p class="cmd-hint">
-            <b>chrome://</b> addresses can't be opened from a link — paste that one into Chrome's
-            address bar yourself.
-          </p>
-          <p style="margin-top:13px">
-            Then in Chrome: open <code class="i">chrome://extensions</code>, turn on
-            <strong>Developer mode</strong>, click <strong>Load unpacked</strong>, and pick that
-            folder. Chrome will note it's a developer-mode extension — expected, since ChromeBoost
-            isn't on the Web Store and runs from files you can read.
+            <b>Leave that folder where it is.</b> Chrome reads it on every launch, so moving or
+            deleting it breaks the extension. Chrome will also flag it as a developer-mode
+            extension — expected, since ChromeBoost isn't on the Web Store and runs from files you
+            can read.
           </p>
         </div>
       </div>
@@ -1171,29 +1202,62 @@
           <h3>Point it at a window</h3>
           <p>
             Click the ChromeBoost icon in the toolbar. Your session shows up with a green dot — hit
-            <strong>Use this window</strong> to bind the Chrome window you want driven. That's it:
+            <strong>Use this window</strong> to bind the Chrome window you want driven. Then try:
           </p>
-<div class="cmds">
+          <div class="cmds">
             <div class="cmd">
               <span class="cmd-text"><span class="c">open news.ycombinator.com and give me the top 5 stories</span></span>
               <button class="cmd-copy" type="button" data-copy="open news.ycombinator.com and give me the top 5 stories">Copy</button>
             </div>
           </div>
-          <p style="margin-top:13px">
-            <code class="i">/chromeboost-setup</code> verifies the connection for you at the end,
-            so you'll know it's working before you rely on it.
-          </p>
         </div>
       </div>
     </div>
 
-    <div class="note">
-      <strong>Rather build from source?</strong> Clone
-      <a href="https://github.com/lordamdal/chromeboost">github.com/lordamdal/chromeboost</a>, run
-      <code class="i">npm install &amp;&amp; npm run build</code>, and load
-      <code class="i">packages/extension/dist</code>. The local WebSocket bridge uses the first free
-      port in <code class="i">7970–7980</code>, so several sessions can run side by side.
-    </div>
+    <details class="trouble">
+      <summary>If something goes wrong</summary>
+      <div class="trouble-body">
+        <h4>The first command opens a dialog asking for a &ldquo;marketplace source&rdquo;</h4>
+        <p>It wants the repo on its own, without the <code class="i">/plugin</code> prefix:</p>
+        <div class="cmds">
+          <div class="cmd">
+            <span class="cmd-text">lordamdal/chromeboost</span>
+            <button class="cmd-copy" type="button" data-copy="lordamdal/chromeboost">Copy</button>
+          </div>
+        </div>
+
+        <h4>Permission denied or host-key error when adding the marketplace</h4>
+        <p><code class="i">owner/repo</code> shorthand clones over SSH. Use the HTTPS URL instead:</p>
+        <div class="cmds">
+          <div class="cmd">
+            <span class="cmd-text"><span class="s">https://github.com/lordamdal/chromeboost.git</span></span>
+            <button class="cmd-copy" type="button" data-copy="https://github.com/lordamdal/chromeboost.git">Copy</button>
+          </div>
+        </div>
+        <p>Or set <code class="i">CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1</code> to make shorthand use HTTPS.</p>
+
+        <h4>No green dot in the popup</h4>
+        <p>
+          The extension is loaded but hasn't connected. Hit the reload arrow on the ChromeBoost
+          card in <code class="i">chrome://extensions</code> — it reconnects on a backoff timer and
+          a reload forces it immediately.
+        </p>
+
+        <h4>After updating the plugin</h4>
+        <p>
+          Run <code class="i">/chromeboost-setup</code> again — it overwrites the Downloads folder
+          in place, so you only need to hit reload in <code class="i">chrome://extensions</code>.
+        </p>
+
+        <h4>Rather build from source?</h4>
+        <p>
+          Clone <a href="https://github.com/lordamdal/chromeboost">github.com/lordamdal/chromeboost</a>,
+          run <code class="i">npm install &amp;&amp; npm run build</code>, and load
+          <code class="i">packages/extension/dist</code>. The local WebSocket bridge takes the first
+          free port in <code class="i">7970–7980</code>, so several sessions run side by side.
+        </p>
+      </div>
+    </details>
   </div>
 </section>
 
