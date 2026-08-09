@@ -12,5 +12,7 @@
     "dev:mcp": "npm run dev -w packages/mcp-server",
     "dev:ext": "npm run dev -w packages/extension",
     "dev:web": "node app/website/server.mjs"
-  }
+  },
+  "license": "MIT",
+  "author": "ChromeBoost contributors"
 }

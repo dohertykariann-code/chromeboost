@@ -11,5 +11,7 @@
     "@types/chrome": "^0.0.297",
     "esbuild": "^0.24.0",
     "typescript": "^5.5.0"
-  }
+  },
+  "license": "MIT",
+  "author": "ChromeBoost contributors"
 }
