@@ -37,6 +37,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/support-cta.js\"",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

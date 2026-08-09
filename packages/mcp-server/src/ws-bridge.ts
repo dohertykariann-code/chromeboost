@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from "ws";
 import path from "path";
+import { recordToolCall } from "./usage.js";
 import type { ClientMessage, DistributiveOmit, ServerMessage } from "./types.js";
 
 type ServerMessagePayload = DistributiveOmit<ServerMessage, "requestId">;
@@ -144,6 +145,9 @@ export class WsBridge {
 
   /** Send a message and wait for a response from the extension. */
   async request(message: ServerMessagePayload, timeoutMs = REQUEST_TIMEOUT_MS): Promise<ClientMessage> {
+    // Counted here rather than per-tool so every path through the bridge is
+    // included exactly once. Debounced inside; never awaited.
+    recordToolCall();
     if (!this.isConnected()) {
       // Grace window for the multi-instance startup race: a freshly spawned
       // MCP on a non-default port may arrive before the extension's WS to

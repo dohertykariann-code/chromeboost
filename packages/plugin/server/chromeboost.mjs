@@ -13338,7 +13338,7 @@ var ZodUnion = class extends ZodType {
         };
       })).then(handleResults);
     } else {
-      let dirty = void 0;
+      let dirty2 = void 0;
       const issues = [];
       for (const option of options) {
         const childCtx = {
@@ -13356,16 +13356,16 @@ var ZodUnion = class extends ZodType {
         });
         if (result.status === "valid") {
           return result;
-        } else if (result.status === "dirty" && !dirty) {
-          dirty = { result, ctx: childCtx };
+        } else if (result.status === "dirty" && !dirty2) {
+          dirty2 = { result, ctx: childCtx };
         }
         if (childCtx.common.issues.length) {
           issues.push(childCtx.common.issues);
         }
       }
-      if (dirty) {
-        ctx.common.issues.push(...dirty.ctx.common.issues);
-        return dirty.result;
+      if (dirty2) {
+        ctx.common.issues.push(...dirty2.ctx.common.issues);
+        return dirty2.result;
       }
       const unionErrors = issues.map((issues2) => new ZodError(issues2));
       addIssueToContext(ctx, {
@@ -24836,6 +24836,51 @@ var import_websocket_server = __toESM(require_websocket_server(), 1);
 
 // src/ws-bridge.ts
 import path from "path";
+
+// src/usage.ts
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+var USAGE_PATH = join(homedir(), ".claude", "chromeboost", "usage.json");
+var FLUSH_INTERVAL_MS = 3e4;
+var cached2 = null;
+var lastFlush = 0;
+var dirty = false;
+function load() {
+  if (cached2) return cached2;
+  try {
+    const raw = JSON.parse(readFileSync(USAGE_PATH, "utf8"));
+    cached2 = {
+      toolCalls: Number.isFinite(raw.toolCalls) ? Number(raw.toolCalls) : 0,
+      lastUsed: Number.isFinite(raw.lastUsed) ? Number(raw.lastUsed) : 0
+    };
+  } catch {
+    cached2 = { toolCalls: 0, lastUsed: 0 };
+  }
+  return cached2;
+}
+function flush() {
+  if (!cached2) return;
+  try {
+    mkdirSync(dirname(USAGE_PATH), { recursive: true });
+    writeFileSync(USAGE_PATH, JSON.stringify(cached2), "utf8");
+    dirty = false;
+    lastFlush = Date.now();
+  } catch {
+  }
+}
+function recordToolCall(now = Date.now()) {
+  const u = load();
+  u.toolCalls += 1;
+  u.lastUsed = now;
+  dirty = true;
+  if (now - lastFlush >= FLUSH_INTERVAL_MS) flush();
+}
+function flushUsage() {
+  if (dirty) flush();
+}
+
+// src/ws-bridge.ts
 var WS_PORT_BASE = 7970;
 var WS_PORT_MAX = 7980;
 var REQUEST_TIMEOUT_MS = 3e4;
@@ -24942,6 +24987,7 @@ var WsBridge = class {
   }
   /** Send a message and wait for a response from the extension. */
   async request(message, timeoutMs = REQUEST_TIMEOUT_MS) {
+    recordToolCall();
     if (!this.isConnected()) {
       const grace = Math.min(1e4, timeoutMs);
       const start = Date.now();
@@ -24987,9 +25033,9 @@ var WsBridge = class {
 };
 
 // src/flow-store.ts
-import { homedir } from "node:os";
-import { join, dirname } from "node:path";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { join as join2, dirname as dirname2 } from "node:path";
+import { existsSync, mkdirSync as mkdirSync2, readFileSync as readFileSync2, writeFileSync as writeFileSync2, renameSync } from "node:fs";
 function originKey(url) {
   if (!url) return void 0;
   try {
@@ -25014,13 +25060,13 @@ var FlowStore = class {
   lastOrigin;
   constructor(version2, baseDir) {
     this.version = version2;
-    this.path = join(baseDir ?? join(homedir(), ".chromeboost"), "flows.json");
+    this.path = join2(baseDir ?? join2(homedir2(), ".chromeboost"), "flows.json");
     this.data = this.load();
   }
   load() {
     try {
       if (existsSync(this.path)) {
-        const parsed = JSON.parse(readFileSync(this.path, "utf-8"));
+        const parsed = JSON.parse(readFileSync2(this.path, "utf-8"));
         if (parsed && parsed.version === 1 && parsed.origins) return parsed;
       }
     } catch {
@@ -25033,9 +25079,9 @@ var FlowStore = class {
   }
   persist() {
     try {
-      mkdirSync(dirname(this.path), { recursive: true });
+      mkdirSync2(dirname2(this.path), { recursive: true });
       const tmp = this.path + ".tmp";
-      writeFileSync(tmp, JSON.stringify(this.data, null, 2), "utf-8");
+      writeFileSync2(tmp, JSON.stringify(this.data, null, 2), "utf-8");
       renameSync(tmp, this.path);
     } catch {
     }
@@ -25130,9 +25176,9 @@ function isFragileSelector(selector) {
 }
 
 // src/tools/browser.ts
-import { writeFileSync as writeFileSync2, copyFileSync, readFileSync as readFileSync2 } from "fs";
-import { tmpdir, homedir as homedir2 } from "os";
-import { join as join2 } from "path";
+import { writeFileSync as writeFileSync3, copyFileSync, readFileSync as readFileSync3 } from "fs";
+import { tmpdir, homedir as homedir3 } from "os";
+import { join as join3 } from "path";
 import { execSync } from "child_process";
 
 // src/policy.ts
@@ -25318,13 +25364,13 @@ Refuses fast on pages that are in fullscreen mode (captureVisibleTab hangs there
       const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
       const filename = `chromeboost-${timestamp}.png`;
       const imageBuffer = Buffer.from(response.image, "base64");
-      const tmpPath = join2(tmpdir(), filename);
+      const tmpPath = join3(tmpdir(), filename);
       const needTmp = !shouldInline || sharing;
-      if (needTmp) writeFileSync2(tmpPath, imageBuffer);
+      if (needTmp) writeFileSync3(tmpPath, imageBuffer);
       const notes = [];
       let landedPath = tmpPath;
       if (save_to !== "none") {
-        const savePath = save_to === "cwd" ? join2(process.cwd(), filename) : join2(homedir2(), "Downloads", filename);
+        const savePath = save_to === "cwd" ? join3(process.cwd(), filename) : join3(homedir3(), "Downloads", filename);
         copyFileSync(tmpPath, savePath);
         notes.push(`Saved to ${savePath}`);
         landedPath = savePath;
@@ -25366,7 +25412,7 @@ The saved file path can be passed directly to set_file_input(hint, file_path) to
     async ({ save_to = "downloads" }) => {
       const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
       const filename = `terminal-${timestamp}.png`;
-      const savePath = save_to === "cwd" ? join2(process.cwd(), filename) : join2(homedir2(), "Downloads", filename);
+      const savePath = save_to === "cwd" ? join3(process.cwd(), filename) : join3(homedir3(), "Downloads", filename);
       let captured = false;
       try {
         const bounds = execSync(`osascript -e '
@@ -25401,7 +25447,7 @@ The saved file path can be passed directly to set_file_input(hint, file_path) to
           content: [{ type: "text", text: "Failed to capture terminal. Ensure Screen Recording permission is granted to your terminal app in System Settings > Privacy & Security > Screen Recording." }]
         };
       }
-      const imageBuffer = readFileSync2(savePath);
+      const imageBuffer = readFileSync3(savePath);
       const base642 = imageBuffer.toString("base64");
       let clipboardNote = "";
       try {
@@ -25670,8 +25716,8 @@ Returns whether the element was found. Set valueToType only when the user must p
 }
 
 // src/tools/capture.ts
-import { appendFileSync, mkdirSync as mkdirSync2, readFileSync as readFileSync3, writeFileSync as writeFileSync3 } from "fs";
-import { resolve, relative, isAbsolute, dirname as dirname2 } from "path";
+import { appendFileSync, mkdirSync as mkdirSync3, readFileSync as readFileSync4, writeFileSync as writeFileSync4 } from "fs";
+import { resolve, relative, isAbsolute, dirname as dirname3 } from "path";
 function registerCaptureTools(server, bridge) {
   server.tool(
     "fill_input",
@@ -25859,7 +25905,7 @@ ${lines.join("\n")}` }] };
         envPath = resolved;
         let existing = "";
         try {
-          existing = readFileSync3(envPath, "utf-8");
+          existing = readFileSync4(envPath, "utf-8");
         } catch {
         }
         const lines = existing.split("\n");
@@ -25867,7 +25913,7 @@ ${lines.join("\n")}` }] };
         const existingIndex = lines.findIndex((l) => keyPattern.test(l));
         if (existingIndex !== -1) {
           lines[existingIndex] = `${key}=${value}`;
-          writeFileSync3(envPath, lines.join("\n"), "utf-8");
+          writeFileSync4(envPath, lines.join("\n"), "utf-8");
         } else {
           const toAppend = (existing && !existing.endsWith("\n") ? "\n" : "") + `${key}=${value}
 `;
@@ -26001,9 +26047,9 @@ Set binary=true for non-text responses (PDFs, images, zips) \u2014 the body is r
             `Refusing to write fetch_url body outside the project directory. Target "${resolved}" is not under "${cwd}".`
           );
         }
-        mkdirSync2(dirname2(resolved), { recursive: true });
+        mkdirSync3(dirname3(resolved), { recursive: true });
         const buf = r.body_base64 ? Buffer.from(r.body_base64, "base64") : Buffer.from(r.body_text ?? "", "utf-8");
-        writeFileSync3(resolved, buf);
+        writeFileSync4(resolved, buf);
         const hdrLines = Object.keys(r.headers).sort().map((k) => `  ${k}: ${r.headers[k]}`).join("\n");
         return {
           content: [{
@@ -26756,6 +26802,7 @@ ${tabList}`
   const transport = new StdioServerTransport();
   await server.connect(transport);
   const exitClean = (reason) => {
+    flushUsage();
     console.error(`[chromeboost] host disconnected (${reason}), exiting.`);
     process.exit(0);
   };

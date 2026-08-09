@@ -7,6 +7,7 @@ import { registerHighlightTools } from "./tools/highlight.js";
 import { registerCaptureTools } from "./tools/capture.js";
 import { registerFlowTools } from "./tools/flow.js";
 import { registerCursorTools } from "./tools/cursor.js";
+import { flushUsage } from "./usage.js";
 
 declare const __CHROMEBOOST_VERSION__: string;
 const PACKAGE_VERSION: string =
@@ -131,6 +132,8 @@ async function main() {
   //   2. PPID reparented to 1 — fires when the parent dies and we're
   //      reparented to init (orphaned). Polled every 5s.
   const exitClean = (reason: string) => {
+    // Persist any pending usage count so a short session still registers.
+    flushUsage();
     console.error(`[chromeboost] host disconnected (${reason}), exiting.`);
     process.exit(0);
   };
