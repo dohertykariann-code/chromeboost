@@ -279,6 +279,12 @@ export type ClientMessage =
       navigated?: boolean;
       /** ChromeBoost: the element that actually received the cursor. */
       hit?: { selector: string; tag: string; text: string };
+      /**
+       * Set when CDP dispatch couldn't complete and a synthetic (isTrusted=false)
+       * click was used instead — the caller needs to know the click may not be
+       * honoured by an isTrusted-gated target.
+       */
+      degraded?: boolean;
     }
   // ─── ChromeBoost cursor + HUD responses ───────────────────────────────────
   | {

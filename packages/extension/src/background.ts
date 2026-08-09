@@ -697,12 +697,46 @@ async function dispatchKeyboardActivation(tabId: number): Promise<void> {
   });
 }
 
+/**
+ * How long a single CDP input round-trip may take before we treat the renderer
+ * as saturated and shorten the click ceremony.
+ *
+ * Every `Input.dispatchMouseEvent` waits for the renderer to acknowledge it. On
+ * a normal page that's a few milliseconds. On a heavy SPA whose main thread is
+ * pegged (Google Analytics is the reference case) it can take hundreds, and the
+ * full sequence — ~15 round-trips plus deliberate human-pacing sleeps — blows
+ * any sane budget and the click fails outright.
+ *
+ * A shortened click is worth far more than a click that never lands, so past
+ * this threshold we drop to the minimum viable gesture. Callers are told via
+ * `degraded` so the response can say so rather than silently changing
+ * behaviour.
+ */
+const SLOW_RENDERER_RTT_MS = 250;
+
+/**
+ * Budget for a single CDP click dispatch.
+ *
+ * Raised from 8s: the old value was tuned on responsive pages, where the
+ * sequence completes in well under a second. It left no headroom for a heavy
+ * SPA, so clicks on those failed outright even though the renderer would have
+ * acked a moment later. 15s still sits comfortably inside the 30s WS request
+ * timeout, and the degraded path above means a slow page usually finishes far
+ * sooner than this anyway.
+ */
+const CDP_CLICK_BUDGET_MS = 15000;
+/** Hover is a strict subset of the click sequence, so it gets the same headroom. */
+const CDP_HOVER_BUDGET_MS = 15000;
+
+export type ClickDispatchInfo = { degraded: boolean; rttMs: number };
+
 async function dispatchHumanMouseClick(
   tabId: number,
   cx: number,
   cy: number,
   options: { button?: "left" | "right" | "middle"; double?: boolean } = {},
-): Promise<void> {
+): Promise<ClickDispatchInfo> {
+  let info: ClickDispatchInfo = { degraded: false, rttMs: 0 };
   await withDebugger(tabId, async () => {
     const dbg = chrome.debugger as unknown as {
       sendCommand: (t: { tabId: number }, method: string, params?: object) => Promise<unknown>;
@@ -731,7 +765,23 @@ async function dispatchHumanMouseClick(
     const bowPx = (Math.random() * 0.4 - 0.2) * Math.min(80, perpLen);
     const ctlX = midX + (perpDx / perpLen) * bowPx;
     const ctlY = midY + (perpDy / perpLen) * bowPx;
-    const steps = 6 + Math.floor(Math.random() * 4);
+    // Probe the renderer with the first approach move and time the ack. This
+    // costs nothing (the move is one we were going to send anyway) and tells us
+    // whether the page can afford the full ceremony.
+    const probeStart = Date.now();
+    await dbg.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+      type: "mouseMoved", x: sx, y: sy, button: "none", clickCount: 0, ...ptr,
+    });
+    const rttMs = Date.now() - probeStart;
+    const degraded = rttMs > SLOW_RENDERER_RTT_MS;
+    info = { degraded, rttMs };
+
+    // On a saturated renderer, cut the approach to a couple of moves and drop
+    // the settle tremor entirely. Anti-bot fidelity suffers, but a page this
+    // busy is not running a behavioural fingerprinter's idle loop either — and
+    // the alternative is no click at all.
+    const steps = degraded ? 2 : 6 + Math.floor(Math.random() * 4);
+    const moveGap = degraded ? 0 : 8;
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
       const bx = Math.round((1 - t) * (1 - t) * sx + 2 * (1 - t) * t * ctlX + t * t * cx);
@@ -739,17 +789,19 @@ async function dispatchHumanMouseClick(
       await dbg.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
         type: "mouseMoved", x: bx, y: by, button: "none", clickCount: 0, ...ptr,
       });
-      await new Promise((r) => setTimeout(r, 8 + Math.random() * 14));
+      if (moveGap) await new Promise((r) => setTimeout(r, moveGap + Math.random() * 14));
     }
-    for (let j = 0; j < 3; j++) {
-      const jx = cx + Math.round((Math.random() - 0.5) * 4);
-      const jy = cy + Math.round((Math.random() - 0.5) * 4);
-      await dbg.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
-        type: "mouseMoved", x: jx, y: jy, button: "none", clickCount: 0, ...ptr,
-      });
-      await new Promise((r) => setTimeout(r, 20 + Math.random() * 30));
+    if (!degraded) {
+      for (let j = 0; j < 3; j++) {
+        const jx = cx + Math.round((Math.random() - 0.5) * 4);
+        const jy = cy + Math.round((Math.random() - 0.5) * 4);
+        await dbg.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+          type: "mouseMoved", x: jx, y: jy, button: "none", clickCount: 0, ...ptr,
+        });
+        await new Promise((r) => setTimeout(r, 20 + Math.random() * 30));
+      }
+      await new Promise((r) => setTimeout(r, 25 + Math.random() * 40));
     }
-    await new Promise((r) => setTimeout(r, 25 + Math.random() * 40));
     const clickCount = options.double ? 2 : 1;
     await dbg.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
       type: "mousePressed", x: cx, y: cy, button, clickCount, buttons: 1, ...ptr,
@@ -769,16 +821,19 @@ async function dispatchHumanMouseClick(
         type: "mouseReleased", x: cx, y: cy, button, clickCount: 2, buttons: 0, ...ptr,
       });
     }
-    await new Promise((r) => setTimeout(r, 30 + Math.random() * 50));
-    const px = cx + Math.round((Math.random() - 0.5) * 6);
-    const py = cy + Math.round((Math.random() - 0.5) * 6);
-    await dbg.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
-      type: "mouseMoved", x: px, y: py, button: "none", clickCount: 0, ...ptr,
-    });
+    if (!degraded) {
+      await new Promise((r) => setTimeout(r, 30 + Math.random() * 50));
+      const px = cx + Math.round((Math.random() - 0.5) * 6);
+      const py = cy + Math.round((Math.random() - 0.5) * 6);
+      await dbg.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+        type: "mouseMoved", x: px, y: py, button: "none", clickCount: 0, ...ptr,
+      });
+    }
     // Short tail so an immediately-firing beforeunload dialog is dismissed by
     // the outer click_element handler's listener before this function returns.
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, degraded ? 80 : 200));
   });
+  return info;
 }
 
 /**
@@ -3046,6 +3101,9 @@ async function handleMcpMessage(msg: {
         ? await snapshotVisibleCount(tab.id).catch(() => null)
         : null;
       let cdpPhaseError: string | null = null;
+      // Set when the renderer was too busy for the full humanlike gesture, so
+      // the response can say so instead of silently behaving differently.
+      let degradedNote = "";
       // ChromeBoost: overlay piercing.
       //
       // prepare_click_target hit-tested the target and told us whether anything
@@ -3082,7 +3140,10 @@ async function handleMcpMessage(msg: {
           // Per-phase budget: bezier + settle + press/release usually completes
           // in well under 2s. Cap at 8s so a hung CDP attach reports the phase
           // explicitly instead of dragging the whole click to the 30s WS cap.
-          await phaseRace("cdp_click", 8000, dispatchHumanMouseClick(tabId, Math.round(prep.x!), Math.round(prep.y!)));
+          const dispatchInfo = await phaseRace("cdp_click", CDP_CLICK_BUDGET_MS, dispatchHumanMouseClick(tabId, Math.round(prep.x!), Math.round(prep.y!)));
+          if (dispatchInfo?.degraded) {
+            degradedNote = ` (renderer busy — ${dispatchInfo.rttMs}ms input latency, used a shortened gesture)`;
+          }
           usedCdp = true;
         } catch (e) {
           const err = e as Error & { phase?: string; phaseTimedOut?: boolean };
@@ -3120,7 +3181,7 @@ async function handleMcpMessage(msg: {
       } catch { /* page may have navigated away */ }
 
       if (usedCdp) {
-        result = { success: true, message: `Clicked "${prep.label ?? msg.textHint}"${piercedNote}${postNote}` };
+        result = { success: true, message: `Clicked "${prep.label ?? msg.textHint}"${piercedNote}${degradedNote}${postNote}` };
       } else if (cdpPhaseError) {
         // CDP phase hit its budget. Try the content-script synthetic click
         // as a graceful fallback, but tag the message so the agent sees the
@@ -4049,19 +4110,57 @@ async function handleMcpMessage(msg: {
         } catch { /* best-effort */ }
       }
 
+      let dispatchNote = "";
       try {
-        await phaseRace("cdp_click_at", 8000, dispatchHumanMouseClick(tabId, x, y, { button, double }));
+        const d = await phaseRace("cdp_click_at", CDP_CLICK_BUDGET_MS, dispatchHumanMouseClick(tabId, x, y, { button, double }));
+        if (d?.degraded) {
+          dispatchNote = ` (renderer busy — ${d.rttMs}ms input latency, used a shortened gesture)`;
+        }
       } catch (e) {
         const err = e as Error & { phase?: string; phaseTimedOut?: boolean };
+        // CDP couldn't finish in budget. click_element has always fallen back to
+        // a synthetic click here; click_at_coordinates used to just fail, which
+        // made it useless on exactly the heavy SPAs that need coordinate
+        // clicking most.
+        let synth: { fired?: boolean; message?: string; selector?: string } = {};
+        try {
+          synth = await forwardToContentScript(tab, {
+            type: "synthetic_click_at",
+            requestId: msg.requestId + "-synth",
+            x,
+            y,
+          }) as typeof synth;
+        } catch { /* content script gone too — report the original failure */ }
+
+        if (!synth.fired) {
+          return {
+            type: "click_at_coordinates_response",
+            requestId: msg.requestId,
+            success: false,
+            message: `click_at_coordinates failed at (${x}, ${y}): ${err.message}. The synthetic fallback could not fire either.`,
+            before_url,
+            after_url: before_url,
+            navigated: false,
+            hit,
+          };
+        }
+        await new Promise((r) => setTimeout(r, 250));
+        const [pt] = await chrome.tabs.query({ active: true, windowId: tab.windowId! });
+        const au = pt?.url ?? before_url;
         return {
           type: "click_at_coordinates_response",
           requestId: msg.requestId,
-          success: false,
-          message: `click_at_coordinates failed at (${x}, ${y}): ${err.message}`,
+          success: true,
+          message:
+            `Clicked at (${x}, ${y})${hit ? ` on <${hit.tag}> ${hit.selector}` : ""} via synthetic fallback — ` +
+            `CDP dispatch exceeded its budget (${err.phase ?? "cdp_click_at"}), which usually means the page's ` +
+            `main thread is saturated. NOTE: synthetic events are isTrusted=false, so if the target gates on ` +
+            `isTrusted this click will not be honoured.${au !== before_url ? ` — navigated to ${au}` : ""}`,
           before_url,
-          after_url: before_url,
-          navigated: false,
+          after_url: au,
+          navigated: au !== before_url,
           hit,
+          degraded: true,
         };
       } finally {
         if (coordPierceToken) {
@@ -4090,7 +4189,7 @@ async function handleMcpMessage(msg: {
         type: "click_at_coordinates_response",
         requestId: msg.requestId,
         success: true,
-        message: `Clicked at (${x}, ${y})${hitNote}${double ? " double-click" : ""}${button !== "left" ? ` button=${button}` : ""}${coordPiercedNote}${after_url !== before_url ? ` — navigated to ${after_url}` : ""}${scrimWarning}`,
+        message: `Clicked at (${x}, ${y})${hitNote}${double ? " double-click" : ""}${button !== "left" ? ` button=${button}` : ""}${coordPiercedNote}${dispatchNote}${after_url !== before_url ? ` — navigated to ${after_url}` : ""}${scrimWarning}`,
         before_url,
         after_url,
         navigated: after_url !== before_url,
@@ -4127,7 +4226,7 @@ async function handleMcpMessage(msg: {
       }
 
       try {
-        await phaseRace("cdp_hover", 8000, dispatchHover(tabId, Math.round(hx), Math.round(hy), (msg.settle_ms as number) ?? 220));
+        await phaseRace("cdp_hover", CDP_HOVER_BUDGET_MS, dispatchHover(tabId, Math.round(hx), Math.round(hy), (msg.settle_ms as number) ?? 220));
       } catch (e) {
         return { type: "hover_response", requestId: msg.requestId, success: false, message: `hover failed at (${hx}, ${hy}): ${(e as Error).message}` };
       }

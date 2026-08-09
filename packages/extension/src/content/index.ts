@@ -1139,6 +1139,48 @@ async function handleMessage(msg: IncomingMessage): Promise<unknown> {
       };
     }
 
+    case "synthetic_click_at": {
+      // Fallback for when the CDP dispatch can't complete — a renderer pegged
+      // hard enough that Input.dispatchMouseEvent stops acking in time. These
+      // events are isTrusted=false, so an anti-bot-strict target won't accept
+      // them; but the pages that starve CDP are heavy app UIs, not fingerprinted
+      // login walls, and a synthetic click is the difference between the tool
+      // working there and not.
+      const x = msg.x as number;
+      const y = msg.y as number;
+      const el = deepElementFromPoint(x, y);
+      if (!el) {
+        return {
+          type: "synthetic_click_at_response",
+          requestId: msg.requestId,
+          fired: false,
+          message: `Nothing is painted at (${x}, ${y}).`,
+        };
+      }
+      const opts = { bubbles: true, cancelable: true, composed: true, view: window, clientX: x, clientY: y, button: 0 };
+      const ptr = { ...opts, pointerId: 1, pointerType: "mouse", isPrimary: true, pressure: 0.5 };
+      try { el.dispatchEvent(new PointerEvent("pointerover", { ...ptr, buttons: 0, pressure: 0 })); } catch { /* older engines */ }
+      el.dispatchEvent(new MouseEvent("mouseover", { ...opts, buttons: 0 }));
+      el.dispatchEvent(new MouseEvent("mousemove", { ...opts, buttons: 0 }));
+      try { el.dispatchEvent(new PointerEvent("pointerdown", { ...ptr, buttons: 1 })); } catch { /* ignore */ }
+      el.dispatchEvent(new MouseEvent("mousedown", { ...opts, buttons: 1 }));
+      try { el.dispatchEvent(new PointerEvent("pointerup", { ...ptr, buttons: 0, pressure: 0 })); } catch { /* ignore */ }
+      el.dispatchEvent(new MouseEvent("mouseup", { ...opts, buttons: 0 }));
+      el.dispatchEvent(new MouseEvent("click", { ...opts, buttons: 0 }));
+      // Native .click() as well: some handlers are bound via onclick rather
+      // than addEventListener, and it is a no-op when the chain already fired.
+      if (typeof (el as HTMLElement).click === "function") {
+        try { (el as HTMLElement).click(); } catch { /* ignore */ }
+      }
+      return {
+        type: "synthetic_click_at_response",
+        requestId: msg.requestId,
+        fired: true,
+        selector: describeSelector(el),
+        message: `Synthetic click dispatched on ${describeSelector(el)} at (${x}, ${y}).`,
+      };
+    }
+
     case "list_frames": {
       // Pierce shadow DOMs (open + closed) so iframes nested inside web
       // components (e.g. Reddit's chat composer inside a shadow-hosted host)

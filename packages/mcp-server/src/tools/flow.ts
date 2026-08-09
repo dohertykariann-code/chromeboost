@@ -325,7 +325,9 @@ Runs the same humanlike sequence as \`click_element\` (bezier approach path, set
 
 Refuses obviously-bad coordinates (negative, > 10000). Use this only when DOM matching has failed and you have a known target position from \`list_frames\` or a screenshot.
 
-ChromeBoost: the response names the element that actually received the cursor (\`hit\`), so a click swallowed by a cookie banner is no longer indistinguishable from one that worked. When that element is visually transparent — the classic invisible click-catcher — the response says so and suggests \`pierce: true\`.`,
+ChromeBoost: the response names the element that actually received the cursor (\`hit\`), so a click swallowed by a cookie banner is no longer indistinguishable from one that worked. When that element is visually transparent — the classic invisible click-catcher — the response says so and suggests \`pierce: true\`.
+
+On a page whose main thread is saturated (heavy Angular/Ember dashboards — Google Analytics is the reference case), CDP input dispatch can stop acking in time. ChromeBoost shortens the gesture automatically when it detects high input latency, and if dispatch still can't finish it falls back to a synthetic click at the same point rather than failing. The response says which happened; a synthetic click is \`isTrusted=false\`, so an isTrusted-gated target will ignore it.`,
     {
       x: z.number().describe("Viewport CSS X coordinate (left=0). Get from list_frames or a screenshot grid."),
       y: z.number().describe("Viewport CSS Y coordinate (top=0). Get from list_frames or a screenshot grid."),
@@ -352,6 +354,7 @@ ChromeBoost: the response names the element that actually received the cursor (\
         after_url?: string;
         navigated?: boolean;
         hit?: { selector: string; tag: string; text: string };
+        degraded?: boolean;
       };
       const navLine = r.navigated && r.after_url ? `\n→ Navigated: ${r.after_url}` : "";
       return { content: [{ type: "text", text: `${r.message}${navLine}` }] };
