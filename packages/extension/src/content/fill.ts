@@ -74,6 +74,12 @@ export function fillInput(
   // Try contenteditable elements (used by Stripe, Notion, etc.)
   const editable = findContentEditable(lower);
   if (editable) {
+    // checkSensitiveField reads aria-label/placeholder/name/id generically,
+    // so it works on a contenteditable div the same way it does on a native
+    // input — a Stripe-style card-number surface with aria-label="Card
+    // number" is exactly the shape this is meant to catch.
+    const editableSensitive = checkSensitiveField(editable);
+    if (editableSensitive.sensitive) return refuseSensitive(editableSensitive, textHint);
     editable.focus();
     // Select all existing content and replace
     const selection = window.getSelection();
@@ -97,6 +103,8 @@ export function fillInput(
     const active = document.activeElement;
     if (active instanceof HTMLElement && active !== document.body) {
       if (active.isContentEditable) {
+        const activeEditableSensitive = checkSensitiveField(active);
+        if (activeEditableSensitive.sensitive) return refuseSensitive(activeEditableSensitive, textHint);
         active.focus();
         const selection = window.getSelection();
         const range = document.createRange();
@@ -391,7 +399,7 @@ function findInput(
  * CM6 uses a `.cm-editor` host element containing a `.cm-content` div with role="textbox".
  * Standard fill_input doesn't work because CM6 is not a native input.
  */
-function fillCodeMirror(lower: string, value: string): { success: boolean; message: string } | null {
+function fillCodeMirror(lower: string, value: string): { success: boolean; message: string; sensitive?: boolean; sensitiveKind?: SensitiveKind } | null {
   const editors = queryAllDeep<HTMLElement>(document, ".cm-editor");
   if (editors.length === 0) return null;
 
@@ -429,6 +437,16 @@ function fillCodeMirror(lower: string, value: string): { success: boolean; messa
   const cmContent = targetEditor.querySelector<HTMLElement>(".cm-content");
   if (!cmContent) return null;
 
+  const cmSensitive = checkSensitiveField(cmContent);
+  if (cmSensitive.sensitive) {
+    return {
+      success: false,
+      sensitive: true,
+      sensitiveKind: cmSensitive.kind,
+      message: `Refused to fill CodeMirror editor "${lower}" — looks like a ${cmSensitive.kind} field (${cmSensitive.reason}). This requires the user's own keystrokes: ask them to type it themselves, or highlight_region the field and call wait_for_click.`,
+    };
+  }
+
   // Focus the editor
   cmContent.focus();
 
@@ -455,7 +473,7 @@ function fillCodeMirror(lower: string, value: string): { success: boolean; messa
  * yet, fall through to it (the "fill the prompt at the top" case — only one
  * tiptap editor on the page).
  */
-function fillProseMirror(lower: string, value: string): { success: boolean; message: string; matched?: string } | null {
+function fillProseMirror(lower: string, value: string): { success: boolean; message: string; matched?: string; sensitive?: boolean; sensitiveKind?: SensitiveKind } | null {
   const editors = queryAllDeep<HTMLElement>(
     document,
     '.ProseMirror, .tiptap, [data-tiptap-editor]'
@@ -484,6 +502,20 @@ function fillProseMirror(lower: string, value: string): { success: boolean; mess
   const editable = (target.isContentEditable
     ? target
     : (target.querySelector<HTMLElement>('.ProseMirror[contenteditable=true], [contenteditable=true]') ?? target)) as HTMLElement;
+
+  // Check both the editable surface and the labeled wrapper — the label that
+  // matched (aria-label, or a nearby heading) can live on either.
+  const editableSensitive = checkSensitiveField(editable);
+  const targetSensitive = editable !== target ? checkSensitiveField(target) : { sensitive: false as const };
+  const pmSensitive = editableSensitive.sensitive ? editableSensitive : targetSensitive;
+  if (pmSensitive.sensitive) {
+    return {
+      success: false,
+      sensitive: true,
+      sensitiveKind: pmSensitive.kind,
+      message: `Refused to fill "${lower}" — looks like a ${pmSensitive.kind} field (${pmSensitive.reason}). This requires the user's own keystrokes: ask them to type it themselves, or highlight_region the field and call wait_for_click.`,
+    };
+  }
 
   editable.focus();
   // selectAll then insertText is the path ProseMirror accepts; raw value-set

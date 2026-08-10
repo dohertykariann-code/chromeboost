@@ -28,7 +28,7 @@ import {
 } from "./hittest.js";
 import { readElementValue } from "./capture.js";
 import { fillInput } from "./fill.js";
-import { checkSensitiveField } from "./sensitive.js";
+import { checkSensitiveField, checkSensitiveAction } from "./sensitive.js";
 import { clickElement, prepareClickTarget, postClickInspect, scrollSmartIntoView, reactFiberClickByHint, findTopmostDialog, findDialogByQuery, pointerChainOnTagged } from "./click.js";
 import { collectShadowHosts, countShadowHosts, extractTextDeep, queryAllDeep } from "./shadow.js";
 import { enumerateFormFields } from "./forms.js";
@@ -373,8 +373,8 @@ async function handleMessage(msg: IncomingMessage): Promise<unknown> {
     }
 
     case "check_selector_sensitive": {
-      // Used by background.react_set_input (fill_input's selector mode)
-      // before it ever touches the DOM. That path resolves the element in a
+      // Used by background.type_text's into_selector pre-check, before any
+      // focus/clear mutation happens. That path resolves the element in a
       // MAIN-world executeScript, which can't import sensitive.ts — so the
       // check has to happen here, in the content script, using the same
       // queryAllDeep resolution tag_for_react uses (open + closed shadow
@@ -389,6 +389,41 @@ async function handleMessage(msg: IncomingMessage): Promise<unknown> {
         sensitiveKind: check.sensitive ? check.kind : undefined,
         sensitiveReason: check.sensitive ? check.reason : undefined,
       };
+    }
+
+    case "check_and_tag_for_react": {
+      // Used by background.react_set_input. Resolves the selector ONCE and
+      // either refuses (sensitive) or tags that exact element in the same
+      // pass — unlike calling check_selector_sensitive then tag_for_react
+      // as two separate round trips, there's no window between "checked"
+      // and "tagged" for a fast re-render to swap in a different element at
+      // the same selector.
+      const sel = msg.selector as string;
+      const tagId = msg.tagId as string;
+      const el = queryAllDeep<Element>(document, sel)[0];
+      if (!el) {
+        return { type: "action_done", requestId: msg.requestId, tagged: false, in_shadow: false, sensitive: false };
+      }
+      const check = checkSensitiveField(el);
+      if (check.sensitive) {
+        return {
+          type: "action_done",
+          requestId: msg.requestId,
+          tagged: false,
+          in_shadow: false,
+          sensitive: true,
+          sensitiveKind: check.kind,
+          sensitiveReason: check.reason,
+        };
+      }
+      let cur: Node | null = el;
+      let inShadow = false;
+      while (cur) {
+        if (cur instanceof ShadowRoot) { inShadow = true; break; }
+        cur = cur.parentNode;
+      }
+      el.setAttribute("data-chromeboost-react-target", tagId);
+      return { type: "action_done", requestId: msg.requestId, tagged: true, in_shadow: inShadow, sensitive: false };
     }
 
     case "fill_input": {
@@ -1194,12 +1229,25 @@ async function handleMessage(msg: IncomingMessage): Promise<unknown> {
 
     case "describe_point_target": {
       const el = deepElementFromPoint(msg.x as number, msg.y as number);
+      const info = el ? describeOccluder(el) : undefined;
+      // click_at_coordinates uses this response to refuse sensitive targets
+      // before dispatching — the coordinate click has no other gate of its
+      // own, so the check has to happen here, against whatever element is
+      // actually under the point.
+      let check: ReturnType<typeof checkSensitiveField> = { sensitive: false };
+      if (el) {
+        const fieldCheck = checkSensitiveField(el);
+        check = fieldCheck.sensitive ? fieldCheck : checkSensitiveAction(info?.text);
+      }
       return {
         type: "describe_point_target_response",
         requestId: msg.requestId,
         found: !!el,
         selector: el ? describeSelector(el) : undefined,
-        info: el ? describeOccluder(el) : undefined,
+        info,
+        sensitive: check.sensitive,
+        sensitiveKind: check.sensitive ? check.kind : undefined,
+        sensitiveReason: check.sensitive ? check.reason : undefined,
       };
     }
 

@@ -2904,7 +2904,7 @@ async function handleMcpMessage(msg: {
           in_dialog: msg.in_dialog,
           dialog_query: msg.dialog_query,
         }).catch((e) => ({ success: false, message: String(e), fired: false })) as {
-          success: boolean; message: string; fired: boolean; component?: string; label?: string;
+          success: boolean; message: string; fired: boolean; component?: string; label?: string; sensitive?: boolean; sensitiveKind?: string;
         };
         const [postTabF] = await chrome.tabs.query({ active: true, windowId: tab.windowId! });
         const afterUrlF = postTabF?.url ?? before_url;
@@ -2916,6 +2916,8 @@ async function handleMcpMessage(msg: {
           after_url: afterUrlF,
           navigated: afterUrlF !== before_url,
           fiber_attempted: true,
+          sensitive: fiberResult.sensitive,
+          sensitiveKind: fiberResult.sensitiveKind,
         };
       }
 
@@ -4091,10 +4093,29 @@ async function handleMcpMessage(msg: {
           requestId: msg.requestId + "-probe",
           x,
           y,
-        }) as { found?: boolean; selector?: string; info?: OccluderInfo };
+        }) as { found?: boolean; selector?: string; info?: OccluderInfo; sensitive?: boolean; sensitiveKind?: string; sensitiveReason?: string };
         if (probe.found && probe.info) {
           hitInfo = probe.info;
           hit = { selector: probe.info.selector, tag: probe.info.tag, text: probe.info.text };
+        }
+        // click_at_coordinates has no CDP-path gate of its own (unlike
+        // click_element's prepareClickTarget) — refuse here, against
+        // whatever the probe found under the point, before ever dispatching.
+        // This also closes the leak where a refused click_element("Delete
+        // Account") returns coordinates that could otherwise be replayed
+        // here to get a programmatic click anyway.
+        if (probe.sensitive) {
+          return {
+            type: "click_at_coordinates_response",
+            requestId: msg.requestId,
+            success: false,
+            message: `Refused to click at (${x}, ${y}) — looks like a ${probe.sensitiveKind} action (${probe.sensitiveReason}). This requires a real human click: highlight_region this element and ask the user to click it themselves, or call wait_for_click.`,
+            before_url,
+            after_url: before_url,
+            navigated: false,
+            sensitive: true,
+            sensitiveKind: probe.sensitiveKind,
+          };
         }
       } catch { /* non-scriptable or cross-origin frame — click anyway */ }
 
@@ -4346,6 +4367,30 @@ async function handleMcpMessage(msg: {
       // wait_for_click → execCommand → type_text pattern.
       let intoSelectorOk: boolean | null = null;
       if (intoSelector) {
+        // Check BEFORE focusing/clearing, not after. check_focus_sensitive
+        // (below, post-focus) was too late for clear_first: it clears the
+        // existing value and fires input/change as part of the focus step,
+        // so a sensitive field got its value erased before the later check
+        // ever ran. Reuses the same check_selector_sensitive path added for
+        // react_set_input's selector mode. frame-scoped selectors are an
+        // accepted gap, matching the top-frame-only scope everywhere else.
+        if (!frameSelector) {
+          const preCheck = await forwardToContentScript(tab, {
+            type: "check_selector_sensitive",
+            requestId: msg.requestId + "-into-sensitive-check",
+            selector: intoSelector,
+          }).catch(() => null) as { sensitive?: boolean; sensitiveKind?: string; sensitiveReason?: string } | null;
+          if (preCheck?.sensitive) {
+            return {
+              type: "action_done",
+              requestId: msg.requestId,
+              success: false,
+              sensitive: true,
+              sensitiveKind: preCheck.sensitiveKind,
+              message: `Refused to type into "${intoSelector}" — looks like a ${preCheck.sensitiveKind} field (${preCheck.sensitiveReason}). This requires the user's own keystrokes: ask them to type it themselves, or highlight_region the field and call wait_for_click.`,
+            };
+          }
+        }
         try {
           const r = await chrome.scripting.executeScript({
             target: { tabId },
@@ -4907,46 +4952,37 @@ async function handleMcpMessage(msg: {
       // that used to bypass it entirely. Only checks the top document, same
       // scope as check_focus_sensitive; same-origin iframe targets (frame
       // param) are an accepted, documented gap for now.
+      //
+      // check_and_tag_for_react resolves the selector ONCE and checks +
+      // tags the same element in one content-script round trip — checking
+      // and tagging as two separate messages left a window for a fast
+      // re-render to swap in a different element at the same selector
+      // between the two calls.
+      const tagId = `chromeboost-react-target-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+      let taggedInShadow = false;
       if (!frameSelector) {
-        const sensitiveCheck = await forwardToContentScript(tab, {
-          type: "check_selector_sensitive",
-          requestId: msg.requestId + "-sensitive-check",
+        const checkAndTag = await forwardToContentScript(tab, {
+          type: "check_and_tag_for_react",
+          requestId: msg.requestId + "-check-and-tag",
           selector,
-        }).catch(() => null) as { sensitive?: boolean; sensitiveKind?: string; sensitiveReason?: string } | null;
-        if (sensitiveCheck?.sensitive) {
+          tagId,
+        }).catch(() => null) as { tagged?: boolean; in_shadow?: boolean; sensitive?: boolean; sensitiveKind?: string; sensitiveReason?: string } | null;
+        if (checkAndTag?.sensitive) {
           return {
             type: "action_done",
             requestId: msg.requestId,
             success: false,
             sensitive: true,
-            sensitiveKind: sensitiveCheck.sensitiveKind,
-            message: `Refused to set "${selector}" — looks like a ${sensitiveCheck.sensitiveKind} field (${sensitiveCheck.sensitiveReason}). This requires the user's own keystrokes: ask them to type it themselves, or highlight_region the field and call wait_for_click.`,
+            sensitiveKind: checkAndTag.sensitiveKind,
+            message: `Refused to set "${selector}" — looks like a ${checkAndTag.sensitiveKind} field (${checkAndTag.sensitiveReason}). This requires the user's own keystrokes: ask them to type it themselves, or highlight_region the field and call wait_for_click.`,
           };
         }
-      }
-
-      // Tag the element in the content script first (queryAllDeep pierces
-      // open AND closed shadow roots). The MAIN-world script then reads by
-      // tag attribute. Top-frame only — same-origin iframe access is still
-      // routed through doc.querySelector below since the content script
-      // doesn't run inside iframe documents.
-      const tagId = `chromeboost-react-target-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-      let taggedInShadow = false;
-      if (!frameSelector) {
-        try {
-          const tagResult = await forwardToContentScript(tab, {
-            type: "tag_for_react",
-            requestId: msg.requestId + "-tag",
-            selector,
-            tagId,
-          }) as { tagged: boolean; in_shadow: boolean };
-          if (tagResult?.tagged) {
-            taggedInShadow = !!tagResult.in_shadow;
-          }
-        } catch {
-          // Tagging is best-effort; fall back to plain doc.querySelector below
-          // if it failed (e.g. content script not loaded on this page).
+        if (checkAndTag?.tagged) {
+          taggedInShadow = !!checkAndTag.in_shadow;
         }
+        // Tagging is best-effort; fall back to plain doc.querySelector below
+        // if it failed (e.g. content script not loaded on this page, or the
+        // forwardToContentScript call itself threw).
       }
 
       const r = await chrome.scripting.executeScript({

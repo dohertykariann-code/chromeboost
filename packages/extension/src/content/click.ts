@@ -235,8 +235,11 @@ export async function prepareClickTarget(
 
   // Refuse to fire a programmatic click on a sensitive field or a button/link
   // whose label reads as a payment or destructive action. Coordinates are
-  // still returned (harmless) so the caller can pass them to highlight_region
-  // rather than re-resolving the element.
+  // still returned so the caller can pass them to highlight_region rather
+  // than re-resolving the element — this is only harmless because
+  // click_at_coordinates runs its own describe_point_target-based sensitive
+  // check before dispatching, so replaying these coordinates there refuses
+  // too rather than becoming a bypass.
   const fieldCheck = checkSensitiveField(el);
   const actionCheck = fieldCheck.sensitive ? fieldCheck : checkSensitiveAction(label);
   if (actionCheck.sensitive) {
@@ -605,7 +608,7 @@ export function reactFiberClickByHint(
   near_text?: string,
   in_dialog?: boolean,
   dialog_query?: string,
-): { success: boolean; message: string; fired: boolean; component?: string; label?: string } {
+): { success: boolean; message: string; fired: boolean; component?: string; label?: string; sensitive?: boolean; sensitiveKind?: string } {
   let scope: Document | Element = document;
   if (dialog_query) {
     const d = findDialogByQuery(dialog_query);
@@ -640,6 +643,24 @@ export function reactFiberClickByHint(
     (el as HTMLElement).innerText?.trim() ||
     el.getAttribute("aria-label") ||
     textHint;
+
+  // Same refusal as prepareClickTarget's CDP path — via:"fiber" skips
+  // prepare_click_target entirely (it re-resolves the target itself and
+  // invokes the fiber prop directly), so without this check it bypassed the
+  // sensitive-field/action gate completely.
+  const fieldCheck = checkSensitiveField(el);
+  const actionCheck = fieldCheck.sensitive ? fieldCheck : checkSensitiveAction(label);
+  if (actionCheck.sensitive) {
+    return {
+      success: false,
+      message: `Refused to click "${label}" — looks like a ${actionCheck.kind} action (${actionCheck.reason}). This requires a real human click: highlight_region this element and ask the user to click it themselves, or call wait_for_click.`,
+      fired: false,
+      label,
+      sensitive: true,
+      sensitiveKind: actionCheck.kind,
+    };
+  }
+
   const fiber = reactFiberClick(el);
   if (!fiber.fired) {
     return {
