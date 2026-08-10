@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import path from "path";
 import { recordToolCall } from "./usage.js";
+import { recordAuditEntry } from "./audit-log.js";
 import type { ClientMessage, DistributiveOmit, ServerMessage } from "./types.js";
 
 type ServerMessagePayload = DistributiveOmit<ServerMessage, "requestId">;
@@ -148,6 +149,7 @@ export class WsBridge {
     // Counted here rather than per-tool so every path through the bridge is
     // included exactly once. Debounced inside; never awaited.
     recordToolCall();
+    recordAuditEntry(message);
     if (!this.isConnected()) {
       // Grace window for the multi-instance startup race: a freshly spawned
       // MCP on a non-default port may arrive before the extension's WS to

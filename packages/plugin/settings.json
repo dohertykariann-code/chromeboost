@@ -9,7 +9,6 @@
       "mcp__chromeboost__close_tab",
       "mcp__chromeboost__download_file",
       "mcp__chromeboost__drag",
-      "mcp__chromeboost__execute_script",
       "mcp__chromeboost__fetch_url",
       "mcp__chromeboost__fill_form",
       "mcp__chromeboost__fill_input",

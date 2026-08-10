@@ -9,11 +9,24 @@
  *
  * Mirrored in `packages/extension/src/background.ts` as defence in depth —
  * direct WS callers see the same refusal.
+ *
+ * On top of that fixed list, CHROMEBOOST_EXTRA_BLOCKED_DOMAINS (comma
+ * separated hostnames, e.g. "chase.com,admin.someclient.com") is read at
+ * call time so a user can block their own high-stakes domains — banking,
+ * a client's production admin panel — without editing this file. Blank/unset
+ * is a no-op; subdomains of a listed domain are blocked too.
  */
 
 export type BlockResult =
   | { blocked: false }
   | { blocked: true; reason: string };
+
+function extraBlockedDomains(): string[] {
+  return (process.env.CHROMEBOOST_EXTRA_BLOCKED_DOMAINS ?? "")
+    .split(",")
+    .map((d) => d.trim().toLowerCase())
+    .filter(Boolean);
+}
 
 export function isBlockedUrl(rawUrl: string): BlockResult {
   let parsed: URL;
@@ -44,6 +57,15 @@ export function isBlockedUrl(rawUrl: string): BlockResult {
       reason:
         "chromeboost refuses to drive the browser through OAuth /authorize endpoints. This is hard-coded per the same GitHub Support commitment. Complete OAuth manually in a normal browser tab.",
     };
+  }
+
+  for (const domain of extraBlockedDomains()) {
+    if (host === domain || host.endsWith(`.${domain}`)) {
+      return {
+        blocked: true,
+        reason: `chromeboost refuses to drive the browser at ${host} — it's in CHROMEBOOST_EXTRA_BLOCKED_DOMAINS. Interact with this site manually.`,
+      };
+    }
   }
 
   return { blocked: false };
