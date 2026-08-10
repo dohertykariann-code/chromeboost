@@ -26578,7 +26578,7 @@ Note: this returns top-level frames only. Nested cross-origin frame trees are no
 Shadow hosts (${hosts.length}: ${openCount} open, ${closedCount} closed):` + (closedCount > 0 ? "\n  (Closed roots are invisible to execute_script. Use find_text / get_page_text / click_element / fill_input \u2014 they pierce.)" : "") + "\n" + hostLines.join("\n");
       }
       if (r.frames.length === 0) {
-        const noFrames = "No iframes or frames on this page.";
+        const noFrames = "No iframes or frames found in this snapshot. If you expected an embed (video player, checkout widget, etc.) that isn't showing yet, it may still be mounting asynchronously \u2014 wait a moment (e.g. wait_for a related selector or text) and call list_frames again rather than treating this as definitive.";
         return { content: [{ type: "text", text: hosts.length > 0 ? `${noFrames}${shadowSection}` : noFrames }] };
       }
       const lines = r.frames.map((f) => {

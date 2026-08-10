@@ -59,6 +59,39 @@ function resolveFrameDocument(frame: string | undefined): Document | null {
 }
 
 /**
+ * Wait for the DOM to go quiet for `quietMs`, up to `maxMs` total. Some
+ * embeds (Froala/oEmbed video widgets, lazy ads) resolve their iframe
+ * asynchronously — after an XHR round-trip, not in the same tick as the
+ * rest of the page — so a page can look "settled" (open_page's own settle
+ * check passed) while that iframe still hasn't mounted, even when other,
+ * unrelated iframes already have. Already-quiet pages pay the flat
+ * quietMs cost and nothing more. This is a best-effort mitigation, not a
+ * guarantee — a genuinely slow network round-trip (oEmbed resolution,
+ * ad-server response) can still outlast maxMs. Callers should treat a
+ * zero-iframes result as a point-in-time snapshot, not proof nothing is
+ * mounting; see the "zero frames" hint in list_frames' MCP-side response.
+ */
+function waitForDomQuiet(maxMs: number, quietMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    let lastMutation = Date.now();
+    const observer = new MutationObserver(() => {
+      lastMutation = Date.now();
+    });
+    observer.observe(document, { subtree: true, childList: true });
+    function tick() {
+      if (Date.now() - lastMutation >= quietMs || Date.now() - start >= maxMs) {
+        observer.disconnect();
+        resolve();
+        return;
+      }
+      setTimeout(tick, 50);
+    }
+    tick();
+  });
+}
+
+/**
  * Build an actionable error for a frame that couldn't be read. A cross-origin
  * iframe (e.g. a cloudfront.net component viewer) can't be reached by in-page
  * DOM tools at all, but its HTML IS retrievable via fetch_url, which runs in
@@ -330,6 +363,25 @@ async function handleMessage(msg: IncomingMessage): Promise<unknown> {
 
     case "check_focus_sensitive": {
       const check = checkSensitiveField(document.activeElement);
+      return {
+        type: "action_done",
+        requestId: msg.requestId,
+        sensitive: check.sensitive,
+        sensitiveKind: check.sensitive ? check.kind : undefined,
+        sensitiveReason: check.sensitive ? check.reason : undefined,
+      };
+    }
+
+    case "check_selector_sensitive": {
+      // Used by background.react_set_input (fill_input's selector mode)
+      // before it ever touches the DOM. That path resolves the element in a
+      // MAIN-world executeScript, which can't import sensitive.ts — so the
+      // check has to happen here, in the content script, using the same
+      // queryAllDeep resolution tag_for_react uses (open + closed shadow
+      // roots). Top-frame only, matching check_focus_sensitive's scope.
+      const sel = msg.selector as string;
+      const el = queryAllDeep<Element>(document, sel)[0];
+      const check = checkSensitiveField(el);
       return {
         type: "action_done",
         requestId: msg.requestId,
@@ -1197,6 +1249,14 @@ async function handleMessage(msg: IncomingMessage): Promise<unknown> {
       // Pierce shadow DOMs (open + closed) so iframes nested inside web
       // components (e.g. Reddit's chat composer inside a shadow-hosted host)
       // are discoverable. The previous behavior queried only the light DOM.
+      // A single synchronous query right after open_page can catch the page
+      // mid-mount: some embeds (Froala/oEmbed video widgets) resolve their
+      // iframe asynchronously, and other, unrelated iframes (tracking
+      // pixels, Calendly's widget host) can already be present by then —
+      // so "zero iframes found" is NOT a reliable signal that nothing is
+      // still mounting. Always give the DOM a short quiet-check before
+      // snapshotting rather than gating the wait on an empty first result.
+      await waitForDomQuiet(1500, 200);
       const iframes = queryAllDeep<HTMLIFrameElement | HTMLFrameElement>(document, "iframe, frame");
       const frames = iframes.map((el, index) => {
         const src = el.getAttribute("src") ?? "";

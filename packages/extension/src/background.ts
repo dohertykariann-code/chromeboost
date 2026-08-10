@@ -4901,6 +4901,30 @@ async function handleMcpMessage(msg: {
       const value = msg.value as string;
       const frameSelector = msg.frame as string | undefined;
 
+      // Refuse to set a password/payment/OTP/SSN field. This mirrors the
+      // fill_input(textHint) gate in content/fill.ts — react_set_input is a
+      // separate code path (MAIN-world executeScript, not content/fill.ts)
+      // that used to bypass it entirely. Only checks the top document, same
+      // scope as check_focus_sensitive; same-origin iframe targets (frame
+      // param) are an accepted, documented gap for now.
+      if (!frameSelector) {
+        const sensitiveCheck = await forwardToContentScript(tab, {
+          type: "check_selector_sensitive",
+          requestId: msg.requestId + "-sensitive-check",
+          selector,
+        }).catch(() => null) as { sensitive?: boolean; sensitiveKind?: string; sensitiveReason?: string } | null;
+        if (sensitiveCheck?.sensitive) {
+          return {
+            type: "action_done",
+            requestId: msg.requestId,
+            success: false,
+            sensitive: true,
+            sensitiveKind: sensitiveCheck.sensitiveKind,
+            message: `Refused to set "${selector}" — looks like a ${sensitiveCheck.sensitiveKind} field (${sensitiveCheck.sensitiveReason}). This requires the user's own keystrokes: ask them to type it themselves, or highlight_region the field and call wait_for_click.`,
+          };
+        }
+      }
+
       // Tag the element in the content script first (queryAllDeep pierces
       // open AND closed shadow roots). The MAIN-world script then reads by
       // tag attribute. Top-frame only — same-origin iframe access is still
