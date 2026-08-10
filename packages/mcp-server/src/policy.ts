@@ -8,7 +8,11 @@
  * github.com URL or any OAuth /authorize endpoint."
  *
  * Mirrored in `packages/extension/src/background.ts` as defence in depth —
- * direct WS callers see the same refusal.
+ * direct WS callers see the same refusal. The hard-coded GitHub/OAuth list
+ * is duplicated as a literal there. CHROMEBOOST_EXTRA_BLOCKED_DOMAINS below
+ * can't be duplicated the same way (the extension has no process.env) — the
+ * server sends its resolved value over on the "identity" handshake message
+ * (ws-bridge.ts) instead, and the extension keeps its own copy in sync.
  *
  * On top of that fixed list, CHROMEBOOST_EXTRA_BLOCKED_DOMAINS (comma
  * separated hostnames, e.g. "chase.com,admin.someclient.com") is read at
@@ -21,7 +25,7 @@ export type BlockResult =
   | { blocked: false }
   | { blocked: true; reason: string };
 
-function extraBlockedDomains(): string[] {
+export function extraBlockedDomains(): string[] {
   return (process.env.CHROMEBOOST_EXTRA_BLOCKED_DOMAINS ?? "")
     .split(",")
     .map((d) => d.trim().toLowerCase())

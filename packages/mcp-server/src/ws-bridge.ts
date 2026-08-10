@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import path from "path";
 import { recordToolCall } from "./usage.js";
 import { recordAuditEntry } from "./audit-log.js";
+import { extraBlockedDomains } from "./policy.js";
 import type { ClientMessage, DistributiveOmit, ServerMessage } from "./types.js";
 
 type ServerMessagePayload = DistributiveOmit<ServerMessage, "requestId">;
@@ -105,12 +106,18 @@ export class WsBridge {
           const cwd = process.cwd();
           const host = process.env.CHROMEBOOST_HOST
             ?? (process.env.CLAUDE_PLUGIN_ROOT ? "claude" : undefined);
+          // extraBlockedDomains reads CHROMEBOOST_EXTRA_BLOCKED_DOMAINS from
+          // this (Node) process's env — the extension has no process.env of
+          // its own, so this is how its mirrored isBlockedUrl check learns
+          // the same list rather than silently only enforcing the hard-coded
+          // GitHub/OAuth entries. See policy.ts's file-level comment.
           ws.send(JSON.stringify({
             type: "identity",
             cwd,
             label: path.basename(cwd),
             port: this.port,
             host,
+            extraBlockedDomains: extraBlockedDomains(),
           }));
           return;
         }

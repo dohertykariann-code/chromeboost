@@ -24920,6 +24920,42 @@ function recordAuditEntry(message) {
   }
 }
 
+// packages/mcp-server/src/policy.ts
+function extraBlockedDomains() {
+  return (process.env.CHROMEBOOST_EXTRA_BLOCKED_DOMAINS ?? "").split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
+}
+function isBlockedUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return { blocked: false };
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (host === "github.com" || host.endsWith(".github.com") || host === "githubusercontent.com" || host.endsWith(".githubusercontent.com")) {
+    return {
+      blocked: true,
+      reason: "chromeboost refuses to drive the browser at github.com. This is hard-coded per a commitment to GitHub Support during an account-restoration review (2026-05-14). Interact with GitHub manually in a normal browser tab."
+    };
+  }
+  const pathLower = parsed.pathname.toLowerCase();
+  if (pathLower.includes("oauth") && pathLower.includes("authorize")) {
+    return {
+      blocked: true,
+      reason: "chromeboost refuses to drive the browser through OAuth /authorize endpoints. This is hard-coded per the same GitHub Support commitment. Complete OAuth manually in a normal browser tab."
+    };
+  }
+  for (const domain of extraBlockedDomains()) {
+    if (host === domain || host.endsWith(`.${domain}`)) {
+      return {
+        blocked: true,
+        reason: `chromeboost refuses to drive the browser at ${host} \u2014 it's in CHROMEBOOST_EXTRA_BLOCKED_DOMAINS. Interact with this site manually.`
+      };
+    }
+  }
+  return { blocked: false };
+}
+
 // packages/mcp-server/src/ws-bridge.ts
 var WS_PORT_BASE = 7970;
 var WS_PORT_MAX = 7980;
@@ -24994,7 +25030,8 @@ var WsBridge = class {
             cwd,
             label: path.basename(cwd),
             port: this.port,
-            host
+            host,
+            extraBlockedDomains: extraBlockedDomains()
           }));
           return;
         }
@@ -25221,44 +25258,6 @@ import { writeFileSync as writeFileSync3, copyFileSync, readFileSync as readFile
 import { tmpdir, homedir as homedir4 } from "os";
 import { join as join4 } from "path";
 import { execSync } from "child_process";
-
-// packages/mcp-server/src/policy.ts
-function extraBlockedDomains() {
-  return (process.env.CHROMEBOOST_EXTRA_BLOCKED_DOMAINS ?? "").split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
-}
-function isBlockedUrl(rawUrl) {
-  let parsed;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    return { blocked: false };
-  }
-  const host = parsed.hostname.toLowerCase();
-  if (host === "github.com" || host.endsWith(".github.com") || host === "githubusercontent.com" || host.endsWith(".githubusercontent.com")) {
-    return {
-      blocked: true,
-      reason: "chromeboost refuses to drive the browser at github.com. This is hard-coded per a commitment to GitHub Support during an account-restoration review (2026-05-14). Interact with GitHub manually in a normal browser tab."
-    };
-  }
-  const pathLower = parsed.pathname.toLowerCase();
-  if (pathLower.includes("oauth") && pathLower.includes("authorize")) {
-    return {
-      blocked: true,
-      reason: "chromeboost refuses to drive the browser through OAuth /authorize endpoints. This is hard-coded per the same GitHub Support commitment. Complete OAuth manually in a normal browser tab."
-    };
-  }
-  for (const domain of extraBlockedDomains()) {
-    if (host === domain || host.endsWith(`.${domain}`)) {
-      return {
-        blocked: true,
-        reason: `chromeboost refuses to drive the browser at ${host} \u2014 it's in CHROMEBOOST_EXTRA_BLOCKED_DOMAINS. Interact with this site manually.`
-      };
-    }
-  }
-  return { blocked: false };
-}
-
-// packages/mcp-server/src/tools/browser.ts
 function registerBrowserTools(server, bridge, flowStore) {
   server.tool(
     "open_page",

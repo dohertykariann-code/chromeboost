@@ -16,10 +16,12 @@ import type { OccluderInfo } from "./content/hittest";
 const OFFSCREEN_URL = chrome.runtime.getURL("offscreen.html");
 
 // ─── Per-instance Claude window assignments ────────────────────────────────
-// Per-port instance metadata (label, host) from the WS identity handshake.
-// Populated via the offscreen "status" broadcast so the background can push
-// instance info to the content script for the info box overlay.
-const portMeta = new Map<number, { label?: string; host?: string }>();
+// Per-port instance metadata (label, host, extraBlockedDomains) from the WS
+// identity handshake. Populated via the offscreen "status" broadcast so the
+// background can push instance info to the content script for the info box
+// overlay, and so isBlockedUrl can enforce CHROMEBOOST_EXTRA_BLOCKED_DOMAINS
+// (the extension has no process.env of its own — see policy.ts).
+const portMeta = new Map<number, { label?: string; host?: string; extraBlockedDomains?: string[] }>();
 
 // Each Claude Code instance is identified by the WebSocket port it connects on
 // (7970-7980). Each instance can be assigned its own Chrome window so multiple
@@ -109,10 +111,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     // Status broadcasts carry the list of currently-connected WS ports.
     // Persist to chrome.storage.local so the popup can render them.
     if (msg.type === "status") {
-      const livePorts = (msg.livePorts as Array<{ port: number; label?: string; host?: "claude" | "codex" }>) ?? [];
+      const livePorts = (msg.livePorts as Array<{ port: number; label?: string; host?: "claude" | "codex"; extraBlockedDomains?: string[] }>) ?? [];
       chrome.storage.local.set({ chromeboostLivePorts: livePorts }).catch(() => {});
       for (const lp of livePorts) {
-        portMeta.set(lp.port, { label: lp.label, host: lp.host });
+        portMeta.set(lp.port, { label: lp.label, host: lp.host, extraBlockedDomains: lp.extraBlockedDomains });
       }
       sendResponse({ ok: true });
       return true;
@@ -1588,6 +1590,23 @@ function isBlockedUrl(rawUrl: string): { blocked: boolean; reason?: string } {
       reason:
         "chromeboost refuses to drive the browser through OAuth /authorize endpoints (hard-coded). Complete OAuth manually in a normal browser tab.",
     };
+  }
+  // CHROMEBOOST_EXTRA_BLOCKED_DOMAINS lives in the MCP server's (Node)
+  // process.env, which the extension can't read directly — each connected
+  // server sends its resolved list on the "identity" handshake, stored in
+  // portMeta. Union across all connected ports rather than picking one: if
+  // any connected session declared a domain blocked, honor that everywhere,
+  // so this only ever gets MORE restrictive, never silently drops a domain
+  // because a different port's identity message hasn't arrived yet.
+  for (const meta of portMeta.values()) {
+    for (const domain of meta.extraBlockedDomains ?? []) {
+      if (host === domain || host.endsWith(`.${domain}`)) {
+        return {
+          blocked: true,
+          reason: `chromeboost refuses to drive the browser at ${host} — it's in CHROMEBOOST_EXTRA_BLOCKED_DOMAINS. Interact with this site manually.`,
+        };
+      }
+    }
   }
   return { blocked: false };
 }

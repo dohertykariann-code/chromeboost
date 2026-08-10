@@ -21,6 +21,7 @@ type Conn = {
   connected: boolean;
   label?: string;
   host?: Host;
+  extraBlockedDomains?: string[];
 };
 
 const connections: Conn[] = [];
@@ -61,6 +62,9 @@ function connect(conn: Conn) {
       conn.label = (msg.label as string) || undefined;
       const host = msg.host as string | undefined;
       conn.host = host === "claude" || host === "codex" ? host : undefined;
+      conn.extraBlockedDomains = Array.isArray(msg.extraBlockedDomains)
+        ? (msg.extraBlockedDomains as string[])
+        : undefined;
       publishLivePorts();
       return;
     }
@@ -114,7 +118,7 @@ function publishLivePorts() {
   // persist to storage and broadcast to the popup.
   const livePorts = connections
     .filter((c) => c.connected)
-    .map((c) => ({ port: c.port, label: c.label, host: c.host }));
+    .map((c) => ({ port: c.port, label: c.label, host: c.host, extraBlockedDomains: c.extraBlockedDomains }));
   chrome.runtime.sendMessage({ source: "chromeboost-offscreen", type: "status", livePorts }).catch(() => {
     // Background may be starting up, ignore
   });
