@@ -3626,6 +3626,20 @@ async function handleMcpMessage(msg: {
             postNote += ` (fired via React fiber after CDP silently_rejected)`;
             recoveredVia = "react-fiber";
           } else {
+            let diagnosticCapture: unknown;
+            if (typeof prep?.x === "number" && typeof prep?.y === "number") {
+              try {
+                diagnosticCapture = await forwardToContentScript(tab, {
+                  type: "capture_click_failure_diagnostics",
+                  requestId: msg.requestId + "-diag-capture",
+                  x: prep.x,
+                  y: prep.y,
+                });
+              } catch {
+                // Best-effort only. Never let a failed diagnostic capture mask
+                // or replace the actual silently_rejected response.
+              }
+            }
             return {
               type: "click_element_response",
               success: false,
@@ -3635,10 +3649,25 @@ async function handleMcpMessage(msg: {
               navigated: false,
               focused_after: probe2.focused_after,
               silently_rejected: true,
+              diagnostic_capture: diagnosticCapture,
               fiber_attempted: true,
             };
           }
         } else {
+          let diagnosticCapture: unknown;
+          if (typeof prep?.x === "number" && typeof prep?.y === "number") {
+            try {
+              diagnosticCapture = await forwardToContentScript(tab, {
+                type: "capture_click_failure_diagnostics",
+                requestId: msg.requestId + "-diag-capture",
+                x: prep.x,
+                y: prep.y,
+              });
+            } catch {
+              // Best-effort only. Never let a failed diagnostic capture mask
+              // or replace the actual silently_rejected response.
+            }
+          }
           return {
             type: "click_element_response",
             success: false,
@@ -3648,6 +3677,7 @@ async function handleMcpMessage(msg: {
             navigated: false,
             focused_after: probe.focused_after,
             silently_rejected: true,
+            diagnostic_capture: diagnosticCapture,
           };
         }
       }

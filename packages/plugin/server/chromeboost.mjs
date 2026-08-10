@@ -26128,6 +26128,43 @@ ${r.body_text}` : "";
   );
 }
 
+// packages/mcp-server/src/click-failure-log.ts
+import { appendFileSync as appendFileSync3, mkdirSync as mkdirSync5, statSync } from "node:fs";
+import { homedir as homedir5 } from "node:os";
+import { dirname as dirname5, join as join5 } from "node:path";
+var CLICK_FAILURE_LOG_PATH = join5(homedir5(), ".claude", "chromeboost", "click-failures.jsonl");
+var MAX_CLICK_FAILURE_LINE_CHARS = 8e3;
+var MAX_CLICK_FAILURE_LOG_BYTES = 5e6;
+var dirEnsured2 = false;
+function recordClickFailure(entry) {
+  try {
+    if (!dirEnsured2) {
+      mkdirSync5(dirname5(CLICK_FAILURE_LOG_PATH), { recursive: true });
+      dirEnsured2 = true;
+    }
+    let currentSize = 0;
+    try {
+      currentSize = statSync(CLICK_FAILURE_LOG_PATH).size;
+    } catch {
+      currentSize = 0;
+    }
+    if (currentSize >= MAX_CLICK_FAILURE_LOG_BYTES) return;
+    const ts = (/* @__PURE__ */ new Date()).toISOString();
+    let line = JSON.stringify({ ts, ...entry });
+    if (line.length > MAX_CLICK_FAILURE_LINE_CHARS) {
+      line = JSON.stringify({
+        ts,
+        tool: entry.tool,
+        target: entry.target,
+        url: entry.url,
+        truncated: true
+      });
+    }
+    appendFileSync3(CLICK_FAILURE_LOG_PATH, line + "\n", "utf-8");
+  } catch {
+  }
+}
+
 // packages/mcp-server/src/tools/flow.ts
 function registerFlowTools(server, bridge, flowStore) {
   server.tool(
@@ -26218,6 +26255,14 @@ Current URL: ${activeTab.url}`;
         };
       }
       const r = response;
+      if (r.silently_rejected && r.diagnostic_capture) {
+        recordClickFailure({
+          tool: "click_element",
+          target: targetLabel,
+          url: r.before_url,
+          diagnostic: r.diagnostic_capture
+        });
+      }
       const navLine = r.navigated && r.after_url ? `
 \u2192 Navigated: ${r.after_url}` : "";
       let focusLine = "";

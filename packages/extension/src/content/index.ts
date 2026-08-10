@@ -21,6 +21,7 @@ import {
   unpierce,
   unpierceAll,
   probePoint,
+  deepElementsFromPoint,
   deepElementFromPoint,
   describeSelector,
   describeOccluder,
@@ -1145,6 +1146,90 @@ async function handleMessage(msg: IncomingMessage): Promise<unknown> {
       const x = msg.x as number;
       const y = msg.y as number;
       return { type: "probe_point_response", requestId: msg.requestId, ...probePoint(x, y) };
+    }
+
+    case "capture_click_failure_diagnostics": {
+      // Best-effort diagnostic capture for click_element's silently_rejected
+      // terminal case. background.ts calls this right before giving up, so
+      // a repeat failure has something to act on instead of only a one-line
+      // "no observable activity" message.
+      //
+      // The sensitivity gate runs FIRST, before any text is read. An
+      // earlier version called probePoint() (which reads text via
+      // shortText()/describeOccluder()) before checking anything, so a
+      // sensitive element's text could already be sitting in a local
+      // variable even on the path that ultimately suppressed the response
+      // (Codex round 5 finding 12, real bug, fixed here). deepElementsFromPoint
+      // is a pure element-resolution walk with no text reads, so it's safe
+      // to call before the gate; probePoint (and its innerText/textContent
+      // reads) must not run until after.
+      //
+      // The candidate set covers everything that could actually contribute
+      // selector/text to the diagnostic, not just the tagged target and
+      // the topmost hit (finding 13): every element in the painted stack
+      // (up to 8, same depth probePoint uses), plus each one's nearest
+      // actionable ancestor. An icon-only "Delete Account" button's
+      // aria-label lives on the <button>, not the <svg> that happens to be
+      // topmost or mid-stack.
+      //
+      // If ANY candidate is sensitive, the whole capture is suppressed,
+      // not just that one element redacted out of an otherwise-returned
+      // payload. A best-effort diagnostic's safe default is capture
+      // nothing, not capture-most.
+      const x = msg.x as number;
+      const y = msg.y as number;
+      const taggedTarget = queryAllDeep<Element>(document, `[${markerIds.clickTargetAttr()}]`)[0];
+      const stackEls = deepElementsFromPoint(x, y).slice(0, 8);
+      const allCandidates = new Set<Element>();
+      if (taggedTarget) {
+        allCandidates.add(taggedTarget);
+        const taggedAncestor = findActionableAncestor(taggedTarget);
+        if (taggedAncestor) allCandidates.add(taggedAncestor);
+      }
+      for (const el of stackEls) {
+        allCandidates.add(el);
+        const ancestor = findActionableAncestor(el);
+        if (ancestor) allCandidates.add(ancestor);
+      }
+      let sensitiveKind: string | undefined;
+      for (const el of allCandidates) {
+        const fieldCheck = checkSensitiveField(el);
+        const check = fieldCheck.sensitive ? fieldCheck : checkSensitiveAction(actionableLabel(el));
+        if (check.sensitive) { sensitiveKind = check.kind; break; }
+      }
+      if (sensitiveKind) {
+        return {
+          type: "action_done",
+          requestId: msg.requestId,
+          sensitive: true,
+          sensitiveKind,
+          stack_depth: stackEls.length,
+        };
+      }
+      // Only now, after every candidate has cleared the gate, read any
+      // text. probePoint() (shortText()/describeOccluder() inside it)
+      // must never run before the check above.
+      const probe = probePoint(x, y);
+      // shortText() (inside probePoint) already caps each preview at 60
+      // chars, but redact anyway. A 60-char preview can still be the
+      // visible tail of an API key in a settings UI, for example.
+      const capSelector = (s: string) => (s.length > 200 ? s.slice(0, 200) + "…(truncated)" : s);
+      const stack = probe.stack.map((entry) => ({
+        ...entry,
+        selector: capSelector(entry.selector),
+        text: redactSecrets(entry.text).text,
+      }));
+      const top = probe.top
+        ? { ...probe.top, selector: capSelector(probe.top.selector), text: redactSecrets(probe.top.text).text }
+        : undefined;
+      return {
+        type: "action_done",
+        requestId: msg.requestId,
+        sensitive: false,
+        stack,
+        top,
+        in_iframe: probe.in_iframe,
+      };
     }
 
     case "pierce_at": {

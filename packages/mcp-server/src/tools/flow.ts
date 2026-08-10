@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { WsBridge } from "../ws-bridge.js";
 import { FlowStore, isFragileSelector, type Atom } from "../flow-store.js";
+import { recordClickFailure } from "../click-failure-log.js";
 
 export function registerFlowTools(server: McpServer, bridge: WsBridge, flowStore: FlowStore) {
   server.tool(
@@ -169,6 +170,7 @@ ANTI-BOT SUBMIT CEILING — synthetic clicks on social/auth platforms (Reddit, X
         navigated?: boolean;
         scope_missed?: boolean;
         silently_rejected?: boolean;
+        diagnostic_capture?: unknown;
         fiber_attempted?: boolean;
         recovered_via?: string;
         request_in_flight?: boolean;
@@ -181,6 +183,14 @@ ANTI-BOT SUBMIT CEILING — synthetic clicks on social/auth platforms (Reddit, X
           value_preview: string;
         } | null;
       };
+      if (r.silently_rejected && r.diagnostic_capture) {
+        recordClickFailure({
+          tool: "click_element",
+          target: targetLabel,
+          url: r.before_url,
+          diagnostic: r.diagnostic_capture,
+        });
+      }
       // Surface silent redirects: a click whose post-URL differs from the
       // pre-URL is the canonical Canvas "Assessment link → course home" case.
       // Only emit the line when navigation actually happened so the
