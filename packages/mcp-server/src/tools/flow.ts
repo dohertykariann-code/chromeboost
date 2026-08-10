@@ -639,7 +639,15 @@ Note: this returns top-level frames only. Nested cross-origin frame trees are no
           "\n" + hostLines.join("\n");
       }
       if (r.frames.length === 0) {
-        const noFrames = "No iframes or frames on this page.";
+        // This is a point-in-time snapshot (after a brief best-effort
+        // settle wait on the extension side), not a guarantee. Some embeds
+        // (oEmbed video widgets, ad servers) resolve their iframe after a
+        // network round-trip with zero DOM activity while pending, which a
+        // local settle check can't observe. Say so, rather than reading as
+        // certain "nothing here" — that false confidence is what caused a
+        // real session to conclude a page had no video mechanism at all
+        // when a Vimeo iframe was actually still mounting.
+        const noFrames = "No iframes or frames found in this snapshot. If you expected an embed (video player, checkout widget, etc.) that isn't showing yet, it may still be mounting asynchronously — wait a moment (e.g. wait_for a related selector or text) and call list_frames again rather than treating this as definitive.";
         return { content: [{ type: "text", text: hosts.length > 0 ? `${noFrames}${shadowSection}` : noFrames }] };
       }
       const lines = r.frames.map((f) => {

@@ -8,7 +8,7 @@
  * top-level page or a same-origin iframe (see frame= on the MCP side).
  */
 
-import { queryAllDeep, walkTextNodesDeep } from "./shadow.js";
+import { extractTextDeep, queryAllDeep, walkTextNodesDeep } from "./shadow.js";
 import { deriveInputLabel, getNearestHeading } from "./forms.js";
 
 // ─── findText ──────────────────────────────────────────────────────────────
@@ -527,7 +527,14 @@ export function waitForText(
       try {
         const target = scope instanceof Document ? (scope.body ?? scope.documentElement) : scope;
         if (target) {
-          const txt = (target.textContent ?? "").replace(/\s+/g, " ").trim();
+          // extractTextDeep, not target.textContent: raw textContent walks
+          // <script>/<style> nodes too, so on a page whose last body-level
+          // element is a bootstrap/analytics script, the trailing-240-chars
+          // slice can land entirely inside minified JS instead of visible
+          // page text. extractTextDeep skips SKIP_TAGS the same way
+          // walkTextNodesDeep does for live matching, and pierces shadow
+          // roots as a bonus (plain textContent doesn't reach those either).
+          const txt = extractTextDeep(target).replace(/\s+/g, " ").trim();
           lastText = txt.length > 240 ? txt.slice(-240) : txt;
         }
       } catch { /* ignore */ }
