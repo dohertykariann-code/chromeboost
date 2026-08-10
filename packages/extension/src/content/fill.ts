@@ -1,4 +1,14 @@
 import { queryAllDeep, walkTextNodesDeep } from "./shadow.js";
+import { checkSensitiveField, type SensitiveKind } from "./sensitive.js";
+
+function refuseSensitive(check: { sensitive: true; kind: SensitiveKind; reason: string }, textHint: string) {
+  return {
+    success: false,
+    sensitive: true,
+    sensitiveKind: check.kind,
+    message: `Refused to auto-fill "${textHint}" — looks like a ${check.kind} field (${check.reason}). This requires the user's own keystrokes: ask them to type it themselves, or highlight_region the field and call wait_for_click to wait for them to act.`,
+  };
+}
 
 /**
  * Match strength used to rank fill_input candidates. Lower = stronger.
@@ -47,7 +57,7 @@ export function fillInput(
   value: string,
   nth?: number,
   exact: boolean = false
-): { success: boolean; message: string; matched?: string } {
+): { success: boolean; message: string; matched?: string; sensitive?: boolean; sensitiveKind?: SensitiveKind } {
   const lower = textHint.toLowerCase().trim();
   const nthExplicit = typeof nth === "number" && nth >= 1;
 
@@ -101,6 +111,8 @@ export function fillInput(
       }
       if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
         if (isEditable(active)) {
+          const activeSensitive = checkSensitiveField(active);
+          if (activeSensitive.sensitive) return refuseSensitive(activeSensitive, textHint);
           const nativeSetter = Object.getOwnPropertyDescriptor(
             active instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype,
             "value"
@@ -124,6 +136,9 @@ export function fillInput(
   }
 
   const { input, kind, fuzzyCount, fuzzyCandidates } = found;
+
+  const inputSensitive = checkSensitiveField(input);
+  if (inputSensitive.sensitive) return refuseSensitive(inputSensitive, textHint);
 
   // Ambiguous fuzzy walk: when the winner only matched via the lowest-confidence
   // pathway AND there were 2+ such candidates, refuse rather than silently

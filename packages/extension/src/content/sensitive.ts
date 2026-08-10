@@ -1,0 +1,73 @@
+/**
+ * Best-effort detection of form fields and buttons that should require a
+ * real human gesture rather than a programmatic fill/click — passwords,
+ * payment details, one-time codes, SSNs, and the buttons that submit
+ * payments or destructive actions.
+ *
+ * This is pattern-matching against common attribute/text conventions, not a
+ * guarantee. A custom widget with no matching signal (a payment field
+ * rendered inside a canvas, a submit button whose only label is an icon)
+ * will not be caught. It closes the common, detectable cases; it is a
+ * backstop, not a proof of safety.
+ */
+
+export type SensitiveKind = "password" | "payment" | "otp" | "ssn" | "sensitive-action";
+
+export type SensitiveCheck =
+  | { sensitive: false }
+  | { sensitive: true; kind: SensitiveKind; reason: string };
+
+const PAYMENT_AUTOCOMPLETE = new Set([
+  "cc-number", "cc-csc", "cc-exp", "cc-exp-month", "cc-exp-year", "cc-name", "cc-type",
+]);
+
+const PAYMENT_PATTERN = /card[\s-]?number|\bcvv\b|\bcvc\b|security[\s-]?code|routing[\s-]?number|account[\s-]?number|\biban\b|\bswift\b/i;
+const OTP_PATTERN = /one[\s-]?time[\s-]?(?:code|password)|\botp\b|\b2fa\b|\bmfa\b|verification[\s-]?code|auth(?:entication)?[\s-]?code/i;
+const SSN_PATTERN = /\bssn\b|social[\s-]?security/i;
+
+function fieldSignal(el: Element): string {
+  return [
+    el.getAttribute("name") ?? "",
+    el.getAttribute("id") ?? "",
+    el.getAttribute("aria-label") ?? "",
+    el.getAttribute("placeholder") ?? "",
+  ].join(" ").toLowerCase();
+}
+
+/** Check a resolved form field (input/textarea/select/contenteditable). */
+export function checkSensitiveField(el: Element | null | undefined): SensitiveCheck {
+  if (!el) return { sensitive: false };
+
+  if (el instanceof HTMLInputElement && el.type === "password") {
+    return { sensitive: true, kind: "password", reason: 'input type="password"' };
+  }
+
+  const autocomplete = (el.getAttribute("autocomplete") ?? "").toLowerCase();
+  if (PAYMENT_AUTOCOMPLETE.has(autocomplete)) {
+    return { sensitive: true, kind: "payment", reason: `autocomplete="${autocomplete}"` };
+  }
+
+  const signal = fieldSignal(el);
+  if (OTP_PATTERN.test(signal)) {
+    return { sensitive: true, kind: "otp", reason: "field name/label/placeholder matches a one-time-code pattern" };
+  }
+  if (PAYMENT_PATTERN.test(signal)) {
+    return { sensitive: true, kind: "payment", reason: "field name/label/placeholder matches a payment-detail pattern" };
+  }
+  if (SSN_PATTERN.test(signal)) {
+    return { sensitive: true, kind: "ssn", reason: "field name/label/placeholder matches an SSN pattern" };
+  }
+
+  return { sensitive: false };
+}
+
+const ACTION_PATTERN = /\b(pay now|place order|complete purchase|confirm payment|buy now|submit payment|proceed to checkout|checkout now|confirm delete|delete account|delete permanently|deactivate account)\b/i;
+
+/** Check a resolved click target's visible label (button/link text). */
+export function checkSensitiveAction(label: string | undefined | null): SensitiveCheck {
+  if (!label) return { sensitive: false };
+  if (ACTION_PATTERN.test(label)) {
+    return { sensitive: true, kind: "sensitive-action", reason: `button/link text matches "${label.trim()}"` };
+  }
+  return { sensitive: false };
+}

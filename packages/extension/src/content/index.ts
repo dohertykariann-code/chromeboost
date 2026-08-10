@@ -28,6 +28,7 @@ import {
 } from "./hittest.js";
 import { readElementValue } from "./capture.js";
 import { fillInput } from "./fill.js";
+import { checkSensitiveField } from "./sensitive.js";
 import { clickElement, prepareClickTarget, postClickInspect, scrollSmartIntoView, reactFiberClickByHint, findTopmostDialog, findDialogByQuery, pointerChainOnTagged } from "./click.js";
 import { collectShadowHosts, countShadowHosts, extractTextDeep, queryAllDeep } from "./shadow.js";
 import { enumerateFormFields } from "./forms.js";
@@ -325,6 +326,17 @@ async function handleMessage(msg: IncomingMessage): Promise<unknown> {
         node = node.parentElement;
       }
       return { type: "action_done", requestId: msg.requestId };
+    }
+
+    case "check_focus_sensitive": {
+      const check = checkSensitiveField(document.activeElement);
+      return {
+        type: "action_done",
+        requestId: msg.requestId,
+        sensitive: check.sensitive,
+        sensitiveKind: check.sensitive ? check.kind : undefined,
+        sensitiveReason: check.sensitive ? check.reason : undefined,
+      };
     }
 
     case "fill_input": {
@@ -820,10 +832,10 @@ async function handleMessage(msg: IncomingMessage): Promise<unknown> {
     case "fill_form": {
       const formFields = msg.fields as Array<{ label: string; value: string }>;
       const exact = (msg.exact as boolean | undefined) ?? false;
-      const results: Array<{ label: string; success: boolean; message: string; matched?: string }> = [];
+      const results: Array<{ label: string; success: boolean; message: string; matched?: string; sensitive?: boolean; sensitiveKind?: string }> = [];
       for (const field of formFields) {
         const result = fillInput(field.label, field.value, 1, exact);
-        results.push({ label: field.label, success: result.success, message: result.message, matched: result.matched });
+        results.push({ label: field.label, success: result.success, message: result.message, matched: result.matched, sensitive: result.sensitive, sensitiveKind: result.sensitiveKind });
         // Brief pause between fills so React can process each change event
         await new Promise((r) => setTimeout(r, 80));
       }

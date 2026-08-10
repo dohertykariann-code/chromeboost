@@ -1,6 +1,7 @@
 import { queryAllDeep } from "./shadow.js";
 import { markerIds } from "../markers.js";
 import { findClearPoint, scrollClearOfPinned, type OccluderInfo } from "./hittest.js";
+import { checkSensitiveField, checkSensitiveAction, type SensitiveKind } from "./sensitive.js";
 
 /**
  * Phase 1 of the CDP click flow. Find the clickable element, scroll it into
@@ -50,6 +51,9 @@ export async function prepareClickTarget(
     opacity: string;
     visible: boolean;
   };
+  sensitive?: boolean;
+  sensitiveKind?: SensitiveKind;
+  sensitiveReason?: string;
 }> {
   // Clear any stale tags from a previous click. Shadow-piercing because the
   // previous click may have tagged an element inside a shadow root.
@@ -228,6 +232,24 @@ export async function prepareClickTarget(
       `${clear.occluder.full_screen_scrim ? " (full-screen scrim)" : ""}` +
       `${clear.occluder.pinned ? " (pinned)" : ""}`
     : "";
+
+  // Refuse to fire a programmatic click on a sensitive field or a button/link
+  // whose label reads as a payment or destructive action. Coordinates are
+  // still returned (harmless) so the caller can pass them to highlight_region
+  // rather than re-resolving the element.
+  const fieldCheck = checkSensitiveField(el);
+  const actionCheck = fieldCheck.sensitive ? fieldCheck : checkSensitiveAction(label);
+  if (actionCheck.sensitive) {
+    el.removeAttribute(markerIds.clickTargetAttr());
+    return {
+      success: false,
+      message: `Refused to click "${label}" — looks like a ${actionCheck.kind} action (${actionCheck.reason}). This requires a real human click: highlight_region this element and ask the user to click it themselves, or call wait_for_click.`,
+      x, y, width: rect.width, height: rect.height, label,
+      sensitive: true,
+      sensitiveKind: actionCheck.kind,
+      sensitiveReason: actionCheck.reason,
+    };
+  }
 
   return {
     success: true,

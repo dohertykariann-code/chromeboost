@@ -2881,6 +2881,9 @@ async function handleMcpMessage(msg: {
           opacity: string;
           visible: boolean;
         };
+        sensitive?: boolean;
+        sensitiveKind?: string;
+        sensitiveReason?: string;
       };
       // via:"fiber" skips the CDP click entirely and goes straight to React
       // fiber prop invocation. Use when the caller already knows the site is
@@ -2936,7 +2939,15 @@ async function handleMcpMessage(msg: {
       }
 
       if (!prep || !prep.success) {
-        return { type: "click_element_response", success: false, message: prep?.message ?? "click failed", before_url, after_url: before_url, navigated: false, scope_missed: prep?.scope_missed };
+        return {
+          type: "click_element_response",
+          success: false,
+          message: prep?.message ?? "click failed",
+          before_url, after_url: before_url, navigated: false,
+          scope_missed: prep?.scope_missed,
+          sensitive: prep?.sensitive,
+          sensitiveKind: prep?.sensitiveKind,
+        };
       }
 
       // Pre-flight skip: matched element resolved to an already-checked radio.
@@ -4518,6 +4529,27 @@ async function handleMcpMessage(msg: {
             requestId: msg.requestId,
             success: false,
             message: `Error focusing iframe "${frameSelector}": ${(e as Error).message}`,
+          };
+        }
+      }
+
+      // Refuse to type into a password/payment/OTP/SSN field. Only checks the
+      // top document's activeElement, so it does NOT cover the `frame` path
+      // (same-origin iframe focus) — the content script that runs this check
+      // lives in the top frame only. frameSelector typing is unguarded here.
+      if (!frameSelector) {
+        const focusCheck = await forwardToContentScript(tab, {
+          type: "check_focus_sensitive",
+          requestId: msg.requestId + "-focus-check",
+        }).catch(() => null) as { sensitive?: boolean; sensitiveKind?: string; sensitiveReason?: string } | null;
+        if (focusCheck?.sensitive) {
+          return {
+            type: "action_done",
+            requestId: msg.requestId,
+            success: false,
+            sensitive: true,
+            sensitiveKind: focusCheck.sensitiveKind,
+            message: `Refused to type into the focused field — looks like a ${focusCheck.sensitiveKind} field (${focusCheck.sensitiveReason}). This requires the user's own keystrokes: ask them to type it themselves, or highlight_region the field and call wait_for_click.`,
           };
         }
       }
