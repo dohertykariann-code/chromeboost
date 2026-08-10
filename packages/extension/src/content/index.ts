@@ -91,6 +91,39 @@ function waitForDomQuiet(maxMs: number, quietMs: number): Promise<void> {
   });
 }
 
+const ACTIONABLE_SELECTOR =
+  'button, a[href], [role="button"], [role="link"], input[type="submit"], input[type="button"], label, [onclick]';
+
+/**
+ * Walk up from a point-hit element to the nearest ancestor that would
+ * actually receive the click once the event bubbles — a click on an icon
+ * inside a button fires the button's handler, not the icon's. Used by
+ * describe_point_target so click_at_coordinates' sensitivity check isn't
+ * fooled by an icon-only sensitive button (aria-label lives on the
+ * <button>, not the <svg>/<rect> a coordinate happens to land on).
+ */
+function findActionableAncestor(el: Element, maxDepth = 8): Element | null {
+  let node: Element | null = el;
+  for (let depth = 0; depth < maxDepth && node; depth++) {
+    if (node.matches?.(ACTIONABLE_SELECTOR)) return node;
+    const parent: Element | null =
+      node.parentElement ?? (node.parentNode instanceof ShadowRoot ? node.parentNode.host : null);
+    node = parent;
+  }
+  return null;
+}
+
+/** Visible label for an actionable element — checked against ACTION_PATTERN. */
+function actionableLabel(el: Element): string {
+  return (
+    (el as HTMLElement).innerText?.trim() ||
+    el.getAttribute("aria-label") ||
+    (el as HTMLInputElement).value ||
+    el.getAttribute("title") ||
+    ""
+  );
+}
+
 /**
  * Build an actionable error for a frame that couldn't be read. A cross-origin
  * iframe (e.g. a cloudfront.net component viewer) can't be reached by in-page
@@ -1234,10 +1267,26 @@ async function handleMessage(msg: IncomingMessage): Promise<unknown> {
       // before dispatching — the coordinate click has no other gate of its
       // own, so the check has to happen here, against whatever element is
       // actually under the point.
+      //
+      // deepElementFromPoint often resolves to a leaf node (an <svg>/<rect>
+      // icon, a text span) that carries none of the sensitive signal itself
+      // — an icon-only "Delete Account" button's aria-label lives on the
+      // <button>, not the <svg> a click lands on. Check both the exact hit
+      // and its nearest actionable ancestor (the element whose click
+      // handler would actually fire once the event bubbles).
       let check: ReturnType<typeof checkSensitiveField> = { sensitive: false };
       if (el) {
         const fieldCheck = checkSensitiveField(el);
         check = fieldCheck.sensitive ? fieldCheck : checkSensitiveAction(info?.text);
+        if (!check.sensitive) {
+          const ancestor = findActionableAncestor(el);
+          if (ancestor && ancestor !== el) {
+            const ancestorFieldCheck = checkSensitiveField(ancestor);
+            check = ancestorFieldCheck.sensitive
+              ? ancestorFieldCheck
+              : checkSensitiveAction(actionableLabel(ancestor));
+          }
+        }
       }
       return {
         type: "describe_point_target_response",

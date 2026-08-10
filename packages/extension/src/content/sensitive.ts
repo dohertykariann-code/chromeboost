@@ -69,6 +69,32 @@ export function checkSensitiveField(el: Element | null | undefined): SensitiveCh
   return { sensitive: false };
 }
 
+/**
+ * Check arbitrary nearby label/wrapper text against the same payment/OTP/
+ * SSN patterns checkSensitiveField uses. Editor surfaces (CodeMirror,
+ * ProseMirror/tiptap, generic contenteditable) are often matched to a
+ * fill_input hint via a nearby <label> or container's text, not via the
+ * editable node's own attributes — a "Card number" <label> next to an
+ * unlabelled .cm-content div means checkSensitiveField(cmContent) alone
+ * sees nothing. No password check here (there's no text equivalent of
+ * `type="password"`) and no sensitive-action check (that's
+ * checkSensitiveAction's job, for click targets, not fill targets).
+ */
+export function checkSensitiveText(text: string | undefined | null): SensitiveCheck {
+  if (!text) return { sensitive: false };
+  const normalized = text.toLowerCase().replace(/_/g, " ");
+  if (OTP_PATTERN.test(normalized)) {
+    return { sensitive: true, kind: "otp", reason: "nearby label text matches a one-time-code pattern" };
+  }
+  if (PAYMENT_PATTERN.test(normalized)) {
+    return { sensitive: true, kind: "payment", reason: "nearby label text matches a payment-detail pattern" };
+  }
+  if (SSN_PATTERN.test(normalized)) {
+    return { sensitive: true, kind: "ssn", reason: "nearby label text matches an SSN pattern" };
+  }
+  return { sensitive: false };
+}
+
 // Deliberately multi-word / qualified phrases only — a bare "Delete",
 // "Remove", "Pay", or "Subscribe" is far too common in ordinary, harmless
 // UI (removing a filter chip, deleting a draft comment, paying down a

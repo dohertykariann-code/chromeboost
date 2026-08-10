@@ -1,5 +1,5 @@
 import { queryAllDeep, walkTextNodesDeep } from "./shadow.js";
-import { checkSensitiveField, type SensitiveKind } from "./sensitive.js";
+import { checkSensitiveField, checkSensitiveText, type SensitiveKind } from "./sensitive.js";
 
 function refuseSensitive(check: { sensitive: true; kind: SensitiveKind; reason: string }, textHint: string) {
   return {
@@ -8,6 +8,32 @@ function refuseSensitive(check: { sensitive: true; kind: SensitiveKind; reason: 
     sensitiveKind: check.kind,
     message: `Refused to auto-fill "${textHint}" — looks like a ${check.kind} field (${check.reason}). This requires the user's own keystrokes: ask them to type it themselves, or highlight_region the field and call wait_for_click to wait for them to act.`,
   };
+}
+
+/**
+ * Editor surfaces (CodeMirror, ProseMirror/tiptap, generic contenteditable)
+ * are often matched to a fill_input hint via a nearby <label> or wrapping
+ * container's text rather than the editable node's own attributes — a
+ * "Card number" <label> next to an unlabelled div carries none of that
+ * signal on the div itself. Gathers the same places findContentEditable
+ * and fillCodeMirror already search for a matching label, so
+ * checkSensitiveText can inspect what they saw.
+ */
+function nearbyLabelText(el: Element): string {
+  const parts: string[] = [];
+  const id = (el as HTMLElement).id;
+  if (id) {
+    const label = document.querySelector<HTMLLabelElement>(`label[for="${id}"]`);
+    if (label?.textContent) parts.push(label.textContent);
+  }
+  // Element.closest() is self-inclusive — it checks el itself before any
+  // ancestor. Starting from el.parentElement is required, or "div,
+  // [class]" (both near-universal on wrapper elements) match el on the
+  // first check and this always returns el's own (usually empty) text
+  // instead of climbing to an ancestor that might hold the label.
+  const container = el.parentElement?.closest("div, li, tr, fieldset, form, section, [class]") ?? el.parentElement;
+  if (container) parts.push(container.textContent ?? "");
+  return parts.join(" ");
 }
 
 /**
@@ -80,6 +106,12 @@ export function fillInput(
     // number" is exactly the shape this is meant to catch.
     const editableSensitive = checkSensitiveField(editable);
     if (editableSensitive.sensitive) return refuseSensitive(editableSensitive, textHint);
+    // findContentEditable can also match via a label[for] or nearby
+    // container text (a <label>Card number</label> next to an otherwise
+    // unlabelled div) — checkSensitiveField above only sees editable's OWN
+    // attributes, so that label signal needs its own check.
+    const editableLabelSensitive = checkSensitiveText(nearbyLabelText(editable));
+    if (editableLabelSensitive.sensitive) return refuseSensitive(editableLabelSensitive, textHint);
     editable.focus();
     // Select all existing content and replace
     const selection = window.getSelection();
@@ -105,6 +137,8 @@ export function fillInput(
       if (active.isContentEditable) {
         const activeEditableSensitive = checkSensitiveField(active);
         if (activeEditableSensitive.sensitive) return refuseSensitive(activeEditableSensitive, textHint);
+        const activeLabelSensitive = checkSensitiveText(nearbyLabelText(active));
+        if (activeLabelSensitive.sensitive) return refuseSensitive(activeLabelSensitive, textHint);
         active.focus();
         const selection = window.getSelection();
         const range = document.createRange();
@@ -438,12 +472,15 @@ function fillCodeMirror(lower: string, value: string): { success: boolean; messa
   if (!cmContent) return null;
 
   const cmSensitive = checkSensitiveField(cmContent);
-  if (cmSensitive.sensitive) {
+  // .cm-content rarely carries its own name/id/aria-label — the match above
+  // usually came from a nearby label instead, so check that text too.
+  const cmLabelSensitive = cmSensitive.sensitive ? cmSensitive : checkSensitiveText(nearbyLabelText(targetEditor));
+  if (cmLabelSensitive.sensitive) {
     return {
       success: false,
       sensitive: true,
-      sensitiveKind: cmSensitive.kind,
-      message: `Refused to fill CodeMirror editor "${lower}" — looks like a ${cmSensitive.kind} field (${cmSensitive.reason}). This requires the user's own keystrokes: ask them to type it themselves, or highlight_region the field and call wait_for_click.`,
+      sensitiveKind: cmLabelSensitive.kind,
+      message: `Refused to fill CodeMirror editor "${lower}" — looks like a ${cmLabelSensitive.kind} field (${cmLabelSensitive.reason}). This requires the user's own keystrokes: ask them to type it themselves, or highlight_region the field and call wait_for_click.`,
     };
   }
 
@@ -503,11 +540,19 @@ function fillProseMirror(lower: string, value: string): { success: boolean; mess
     ? target
     : (target.querySelector<HTMLElement>('.ProseMirror[contenteditable=true], [contenteditable=true]') ?? target)) as HTMLElement;
 
-  // Check both the editable surface and the labeled wrapper — the label that
-  // matched (aria-label, or a nearby heading) can live on either.
+  // Check the editable surface, the labeled wrapper, AND the matched
+  // heading/label text — the match above can come from an ancestor's
+  // aria-label or a heading up to 6 levels up, neither of which
+  // checkSensitiveField(editable) or checkSensitiveField(target) alone
+  // would see if that text isn't also copied onto target's own attributes.
   const editableSensitive = checkSensitiveField(editable);
   const targetSensitive = editable !== target ? checkSensitiveField(target) : { sensitive: false as const };
-  const pmSensitive = editableSensitive.sensitive ? editableSensitive : targetSensitive;
+  const labelSensitive = checkSensitiveText(nearbyLabelText(target));
+  const pmSensitive = editableSensitive.sensitive
+    ? editableSensitive
+    : targetSensitive.sensitive
+      ? targetSensitive
+      : labelSensitive;
   if (pmSensitive.sensitive) {
     return {
       success: false,
