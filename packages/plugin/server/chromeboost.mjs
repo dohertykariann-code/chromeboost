@@ -26804,7 +26804,7 @@ HUD state: ${s.hidden ? "hidden" : s.collapsed ? "collapsed" : "expanded"} at ($
 }
 
 // packages/mcp-server/src/index.ts
-var PACKAGE_VERSION = true ? "1.0.0" : "dev";
+var PACKAGE_VERSION = true ? "1.0.1" : "dev";
 var SUPPORT_URL = "https://buy.stripe.com/6oU6oHbqTcD8gSQ1rQbAs00";
 function banner(toolCount, port) {
   const tty = process.stderr.isTTY && !process.env.NO_COLOR;

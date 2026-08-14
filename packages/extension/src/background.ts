@@ -28,7 +28,14 @@ const portMeta = new Map<number, { label?: string; host?: string; extraBlockedDo
 // CC instances can run automations in parallel without colliding.
 let claudeInstances: Record<string, number> = {};
 
-chrome.storage.local.get(["claudeInstances", "claudeWindowId"]).then(async ({ claudeInstances: stored, claudeWindowId: legacy }) => {
+// getActiveTab awaits this before trusting claudeInstances. MV3 service
+// workers unload after ~30s idle and reload on the next event, so on a cold
+// start this storage read races the very message that woke the worker.
+// Losing that race made getActiveTab treat an already-assigned window as
+// unassigned and call chrome.windows.create({ focused: true, ... }), which
+// yanked OS focus to a fresh blank window mid-session even though the
+// user's dedicated automation window was still open.
+const instancesReady: Promise<void> = chrome.storage.local.get(["claudeInstances", "claudeWindowId"]).then(async ({ claudeInstances: stored, claudeWindowId: legacy }) => {
   claudeInstances = (stored as Record<string, number>) ?? {};
   // Migrate legacy single-window storage → port 7970 instance
   if (typeof legacy === "number" && claudeInstances["7970"] === undefined) {
@@ -384,6 +391,7 @@ async function withDebugger<T>(tabId: number, fn: () => Promise<T>): Promise<T> 
 }
 
 async function getActiveTab(port: number): Promise<chrome.tabs.Tab> {
+  await instancesReady;
   let wid = getWindowId(port);
 
   // If we have an assignment, validate the window still exists. If the user
