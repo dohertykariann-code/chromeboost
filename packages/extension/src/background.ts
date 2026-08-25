@@ -28,6 +28,13 @@ const portMeta = new Map<number, { label?: string; host?: string; extraBlockedDo
 // CC instances can run automations in parallel without colliding.
 let claudeInstances: Record<string, number> = {};
 
+// Per-port tracking of the specific tab ChromeBoost last navigated.
+// This is the fix for the tab-hijacking bug: instead of navigating
+// "the active tab" (which is whatever the user is looking at),
+// open_page(new_tab=false) navigates this specific tab, creating a
+// new one only when the tracked tab is gone.
+let claudeTabIds: Record<string, number> = {};
+
 // getActiveTab awaits this before trusting claudeInstances. MV3 service
 // workers unload after ~30s idle and reload on the next event, so on a cold
 // start this storage read races the very message that woke the worker.
@@ -35,8 +42,9 @@ let claudeInstances: Record<string, number> = {};
 // unassigned and call chrome.windows.create({ focused: true, ... }), which
 // yanked OS focus to a fresh blank window mid-session even though the
 // user's dedicated automation window was still open.
-const instancesReady: Promise<void> = chrome.storage.local.get(["claudeInstances", "claudeWindowId"]).then(async ({ claudeInstances: stored, claudeWindowId: legacy }) => {
+const instancesReady: Promise<void> = chrome.storage.local.get(["claudeInstances", "claudeWindowId", "claudeTabIds"]).then(async ({ claudeInstances: stored, claudeWindowId: legacy, claudeTabIds: storedTabs }) => {
   claudeInstances = (stored as Record<string, number>) ?? {};
+  claudeTabIds = (storedTabs as Record<string, number>) ?? {};
   // Migrate legacy single-window storage → port 7970 instance
   if (typeof legacy === "number" && claudeInstances["7970"] === undefined) {
     claudeInstances["7970"] = legacy;
@@ -48,6 +56,9 @@ chrome.storage.onChanged.addListener((changes) => {
   if ("claudeInstances" in changes) {
     claudeInstances = (changes.claudeInstances.newValue as Record<string, number>) ?? {};
   }
+  if ("claudeTabIds" in changes) {
+    claudeTabIds = (changes.claudeTabIds.newValue as Record<string, number>) ?? {};
+  }
 });
 
 function getWindowId(port: number): number | null {
@@ -57,6 +68,37 @@ function getWindowId(port: number): number | null {
 async function setWindowId(port: number, windowId: number): Promise<void> {
   claudeInstances[String(port)] = windowId;
   await chrome.storage.local.set({ claudeInstances });
+}
+
+function getTabId(port: number): number | null {
+  return claudeTabIds[String(port)] ?? null;
+}
+
+async function setTabId(port: number, tabId: number): Promise<void> {
+  claudeTabIds[String(port)] = tabId;
+  await chrome.storage.local.set({ claudeTabIds });
+}
+
+// Returns the specific tab ChromeBoost last navigated for this port.
+// If that tab is gone (closed by the user), creates a new one in the
+// assigned window. Never navigates a tab the user is working in.
+async function getOrCreateCbTab(port: number): Promise<chrome.tabs.Tab> {
+  await instancesReady;
+  const trackedId = getTabId(port);
+  if (trackedId) {
+    try {
+      const tab = await chrome.tabs.get(trackedId);
+      if (tab?.id) return tab;
+    } catch { /* tab was closed — fall through */ }
+  }
+  // Tracked tab is gone or never existed: ensure the window assignment
+  // exists, then open a fresh tab there (not the user's active tab).
+  await getActiveTab(port);
+  const wid = getWindowId(port)!;
+  const newTab = await chrome.tabs.create({ url: "about:blank", active: true, windowId: wid });
+  if (!newTab?.id) throw new Error("ChromeBoost: failed to create a new tab in the assigned window.");
+  await setTabId(port, newTab.id);
+  return newTab;
 }
 
 // Pending click-watch callbacks keyed by requestId. Each entry tracks the
@@ -1808,12 +1850,15 @@ async function handleMcpMessage(msg: {
         // partially-filled form on the current tab keeps focus and doesn't
         // trigger the page's blur/auto-save behavior.
         targetTab = await chrome.tabs.create({ url: targetUrl, active: !background, windowId: wid });
+        // Track this as the new ChromeBoost-owned tab so subsequent
+        // open_page(new_tab=false) calls navigate it, not the user's tab.
+        if (targetTab.id) await setTabId(port, targetTab.id);
       } else {
-        // Reuse active tab. When the current page is already on the same origin,
-        // navigate via in-page location.href so sec-fetch-site is "same-origin"
-        // instead of "cross-site" — some sites serve a mobile / blocked SSR
-        // response when hit with cross-site direct navigation.
-        const active = await getActiveTab(port);
+        // Reuse the specific tab ChromeBoost last navigated, not the
+        // currently-active tab. This is the fix for the tab-hijacking bug:
+        // getOrCreateCbTab returns the tracked tab (or a fresh one if it was
+        // closed), so the user's active tab is never touched.
+        const active = await getOrCreateCbTab(port);
         const sameOrigin = (() => {
           try {
             return active.url && new URL(active.url).origin === new URL(targetUrl).origin;
@@ -1835,6 +1880,7 @@ async function handleMcpMessage(msg: {
           await chrome.tabs.update(active.id!, { url: targetUrl });
         }
         targetTab = { ...active, id: active.id };
+        if (targetTab.id) await setTabId(port, targetTab.id);
       }
       await new Promise<void>((resolve) => {
         const listener = (id: number, info: chrome.tabs.TabChangeInfo) => {
