@@ -30,6 +30,18 @@ const PATTERNS: Pattern[] = [
   { name: "SENDGRID_KEY",      re: /\bSG\.[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}\b/g },
   { name: "TWILIO_ACCOUNT_SID", re: /\bAC[a-f0-9]{32}\b/g },
   { name: "DIGITALOCEAN_TOKEN", re: /\bdop_v1_[a-f0-9]{64}\b/g },
+  // Cloudflare scannable credentials: a distinct prefix (cfut_ user token,
+  // cfat_ account token, cfk_ global key) + 40 alphanumeric chars + an
+  // 8-char CRC32 checksum. The checksum length is undocumented, so match
+  // the prefix + at least 40 alphanumerics. These have their OWN pattern
+  // rather than relying on GENERIC_BEARER because a token shown standalone
+  // in a reveal box (no "bearer" keyword before it) would otherwise slip
+  // through, which is exactly how a real cfut_ token leaked 2026-09-28.
+  // NOTE: legacy UNPREFIXED Cloudflare tokens are [A-Za-z0-9_-]{40} with no
+  // distinguishing marker; matching those bare would false-positive on git
+  // SHAs and similar, so they are deliberately NOT matched here. The primary
+  // defense for those is the skill rule to never read a secret-reveal screen.
+  { name: "CLOUDFLARE_API_TOKEN", re: /\bcf(?:ut|at|k)_[A-Za-z0-9]{40,}\b/g },
   // JWTs — generic 3-segment base64url. Must be long enough to avoid
   // matching short tokens. ALL three segments present.
   { name: "JWT",               re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b/g },
