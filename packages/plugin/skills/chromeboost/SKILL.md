@@ -132,12 +132,49 @@ product, adding an env var), continue immediately with chromeboost.
 
 ## Capturing credentials
 
-After a secret key is revealed:
-1. Grab it via `get_page_text(selector="...")` or `execute_script`
-2. `write_to_env(KEY_NAME, value, envPath)` — writes to `.env`
-3. Tell the user what was written
+**Never read a revealed secret into your own context.** The moment a secret
+value (API key, token, connection string, client secret) could be on screen,
+STOP calling any read tool on that page: no `get_page_text`, no
+`get_page_html`, no `execute_script`, no `take_screenshot`. A page-read tool
+reading a secret is the same exposure as a CLI printing one. `redact.ts`
+strips high-confidence patterns from `get_page_text`, but it is a backstop
+that misses novel/short token shapes and standalone reveal-box values, so it
+is not a license to read the page. Reading the value once, even "just to store
+it," puts it in the transcript permanently and burns the credential.
 
-Use the absolute path for `envPath` (Claude Code working dir + `/.env`).
+The reveal itself is fine to drive (fill the form, set scopes, click
+"Create" / "Reveal"). Only the value must never pass through you:
+
+1. Locate the "Copy" button by its own label/role text with `find_text` and
+   nothing more. The button's label ("Copy") is safe; the adjacent secret is
+   not. A `find_text` match on a different string never returns the value.
+2. Tell the user the value is on their real screen now and to copy it
+   themselves.
+3. Hand them a self-serve command to run in THEIR OWN terminal (never your
+   Bash tool) that reads from a silent prompt straight into the destination:
+   - zsh: `read -s "VARNAME?Paste the value, then press enter: "`
+     (NOT bash's `read -s -p "prompt" VAR`; zsh `-p` reads from a coprocess,
+     it does not display a prompt, and fails with `read: -p: no coprocess`.)
+   - Then pipe straight to the destination, no intermediate echo/print:
+     `printf '%s\n' "$VARNAME" > /path/to/vault-file` (or append to `.env` /
+     a shell profile), then `unset VARNAME`.
+4. After they confirm, verify STRUCTURALLY only, never the content: file
+   exists, is a regular file not a symlink, permissions, owner, byte count.
+   If the value unlocks a script, run that script with stdout discarded
+   (`>/dev/null`) and check only the exit code, which proves it works without
+   reading it.
+
+If a value does reach your context despite this (a tool result leaks it),
+treat it as burned immediately: say so plainly, have the user revoke/rotate
+it at the source, and redo the reveal for the replacement. Anything that
+passed through the transcript is compromised regardless of whether it is
+reused.
+
+`write_to_env` remains available for NON-secret values the user has told you
+to store (a public publishable key, an account ID, a base URL); use the
+absolute `envPath` (Claude Code working dir + `/.env`). It must not be used as step
+2 of reading a secret off a reveal screen, which is what this section
+previously, wrongly, instructed.
 
 ## Tool families at a glance
 
