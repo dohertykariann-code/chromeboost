@@ -22,12 +22,61 @@ const SENSITIVE_KEYS = new Set([
   "value", "text", "code", "content", "body", "html", "key", "envPath",
 ]);
 
-function sanitize(message: Record<string, unknown>): Record<string, unknown> {
+const SENSITIVE_URL_PARAMETERS = new Set([
+  "token", "access_token", "refresh_token", "id_token", "code", "key", "api_key",
+  "apikey", "secret", "client_secret", "password", "passwd", "pwd", "sig", "signature",
+  "auth", "session", "jwt",
+]);
+
+const REDACTED_URL_VALUE = "<redacted>";
+const MALFORMED_URL_VALUE = "<malformed URL omitted>";
+
+function redactUrlValue(value: string): string {
+  if (!/^https?:\/\//i.test(value)) return value;
+
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return value;
+
+    for (const name of [...url.searchParams.keys()]) {
+      if (SENSITIVE_URL_PARAMETERS.has(name.toLowerCase())) {
+        url.searchParams.set(name, REDACTED_URL_VALUE);
+      }
+    }
+
+    const fragment = url.hash.slice(1);
+    if (fragment) {
+      const fragmentParams = new URLSearchParams(fragment);
+      let redactedFragment = false;
+      for (const name of [...fragmentParams.keys()]) {
+        if (SENSITIVE_URL_PARAMETERS.has(name.toLowerCase())) {
+          fragmentParams.set(name, REDACTED_URL_VALUE);
+          redactedFragment = true;
+        }
+      }
+      if (redactedFragment) url.hash = fragmentParams.toString();
+    }
+
+    if (url.username || url.password) {
+      url.username = "redacted";
+      url.password = "redacted";
+    }
+
+    return url.toString().replaceAll(encodeURIComponent(REDACTED_URL_VALUE), REDACTED_URL_VALUE);
+  } catch {
+    // A malformed URL may still contain a credential. Omit it rather than risk logging it.
+    return MALFORMED_URL_VALUE;
+  }
+}
+
+export function sanitize(message: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(message)) {
     if (k === "requestId") continue;
     if (SENSITIVE_KEYS.has(k) && typeof v === "string") {
       out[k] = `<${v.length} chars omitted>`;
+    } else if (typeof v === "string") {
+      out[k] = redactUrlValue(v);
     } else {
       out[k] = v;
     }
