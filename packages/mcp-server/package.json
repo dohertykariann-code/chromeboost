@@ -46,7 +46,7 @@
   "license": "MIT",
   "author": "ChromeBoost contributors",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "ws": "^8.18.0",
     "zod": "^3.22.0"
   },
